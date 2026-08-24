@@ -2,17 +2,39 @@
 
 ## 1. 设计目标
 
-Scenario 是 InfraSourceLab 的“源码”。它必须同时满足：
+Scenario 是 InfraSourceLab 的**版本化领域源码**，但不是普通用户必须手写的产品入口。
 
-- 人可以读、改、Review；
-- AI 可以稳定生成；
-- JSON Schema 可以校验；
+它必须同时满足：
+
+- AI 可以稳定生成/修改；
+- Visual Builder 可以安全读写常用语义；
+- 专家可以在 Monaco 中直接阅读/编辑；
+- JSON Schema / Pydantic 可以严格校验；
 - 编译器可以确定性地产生大量对象；
 - 同一个 canonical world 可以投影成多个来源；
 - 生命周期和故障可描述；
-- 后续新增 Driver 不要求重写所有已有 Scenario。
+- 新增 Driver 不要求重写所有已有 Scenario；
+- 保存为 Revision 后可以长期 Review、Diff、复现。
 
-第一版使用 YAML 作为主编辑格式，内部统一解析为 JSON-compatible model。
+### Authoring surfaces
+
+```text
+AI Create / Context Assistant
+          │
+Visual Scenario Builder
+          │
+YAML Expert Mode (Monaco)
+          │
+          ▼
+Scenario Working Copy
+          │
+          ▼
+Validate / Estimate / Save Revision
+```
+
+三种入口操作**同一个逻辑 Working Copy**，不能各自维护独立配置。
+
+YAML 是 Scenario 的 canonical human-readable serialization / Expert representation，而不是默认交互界面。内部统一解析为 JSON-compatible typed model。
 
 ---
 
@@ -49,15 +71,25 @@ expectations:
 - `v1alpha1` 允许快速演进；
 - 解析器不得静默接受未知 `apiVersion`；
 - schema migration 必须显式；
-- Revision 保存原始文本、normalized document、schema version 和 digest。
+- Revision 保存原始 YAML、normalized document、schema version 和 digest；
+- Builder/AI 必须通过同一 schema/semantic validation，不允许有“UI 特权字段”。
+
+### Builder compatibility
+
+Visual Builder 只覆盖高频 80% 语义，不要求把全部 DSL 字段做成表单。
+
+当 Working Copy 包含 Builder 尚不能表达的高级字段时：
+
+- Builder 必须保留它们；
+- UI 要提示存在 advanced configuration；
+- Builder 保存/Apply 不能静默删除未知但合法的字段；
+- 用户可进入 Expert YAML 精确修改。
 
 ---
 
 ## 3. World：描述真实世界，不描述接口
 
 一个场景可以同时使用显式对象和 count/template 生成。
-
-示例：
 
 ```yaml
 world:
@@ -95,9 +127,7 @@ world:
           distributeOver: racks
 ```
 
-### 原则
-
-World 中字段尽量使用**领域语义**，不要提前写成某个 API 的字段名。
+World 中字段使用**领域语义**，不要提前写成某个 API 字段名。
 
 错误：
 
@@ -131,8 +161,6 @@ TruthEdge
 
 ### TruthNode
 
-建议内部结构：
-
 ```json
 {
   "id": "server-0001",
@@ -162,7 +190,7 @@ TruthEdge
 }
 ```
 
-### 为什么用通用 node/edge，而不是把所有 CI 类型都写成数据库表
+### 为什么用通用 node/edge
 
 - Source 类型会持续扩展；
 - CMDB 模型不是 ISL 的固定模型；
@@ -170,7 +198,7 @@ TruthEdge
 - 同一对象可以被多个 source 以完全不同 schema 表达；
 - JSONB attributes 可以承载长尾属性。
 
-但 Scenario DSL 可以仍然提供强类型 convenience sections，Compiler 再降到通用 graph。
+Scenario DSL 仍可提供强类型 convenience sections，Compiler 再降到通用 graph。
 
 ---
 
@@ -178,7 +206,7 @@ TruthEdge
 
 ### 5.1 不直接使用随机 UUID 作为生成对象 ID
 
-生成 ID 应由：
+生成 ID 由：
 
 ```text
 scenario namespace + resource path + deterministic index
@@ -191,7 +219,7 @@ physical_server/server-0001
 vm/vm-001287
 ```
 
-必要时 UUID 可以使用 UUIDv5 / deterministic hash 派生，而不是 `uuid4()`。
+必要时 UUID 使用 UUIDv5 / deterministic hash，而不是 `uuid4()`。
 
 ### 5.2 Seed 的边界
 
@@ -203,17 +231,32 @@ Compile Manifest 必须同时记录：
 compilerVersion: 0.x.y
 generatorVersions:
   mimesis: x.y.z
-  faker: x.y.z
 scenarioDigest: sha256:...
 ```
 
-依赖要 pin 到明确版本；升级生成器需要新的 manifest。
+依赖 pin 到明确版本；升级生成器形成新的 manifest provenance。
+
+### 5.3 AI 的随机性边界
+
+LLM 可以生成不同 Candidate，但**确定性从用户 Apply/Save 后的 Scenario Revision 开始**。
+
+```text
+AI (may be nondeterministic)
+  ↓ candidate
+validation + user Apply
+  ↓
+immutable Scenario Revision
+  ↓
+deterministic compiler/runtime
+```
+
+运行时绝不为了生成某条记录再调用 LLM。
 
 ---
 
 ## 6. IP / 网络资源分配
 
-Scenario 应提供 deterministic allocator，而不是让每个 Driver 自己随机 IP。
+Scenario 提供 deterministic allocator，而不是让每个 Driver 自己随机 IP。
 
 ```yaml
 world:
@@ -241,8 +284,6 @@ Compiler 检查：
 ## 7. Source Projection
 
 这是 ISL 区别于普通 Synthetic Data 工具的关键模型。
-
-### 7.1 示例
 
 ```yaml
 sources:
@@ -274,9 +315,9 @@ sources:
           valueFromTruthVersion: 0
 ```
 
-### 7.2 Projection 操作
+### Projection 操作
 
-第一版支持有限、安全、可验证的表达式，不要直接执行 Python/JS：
+第一版只支持有限、安全、可验证的 pure transforms：
 
 - rename / map；
 - case transform；
@@ -289,7 +330,7 @@ sources:
 - deterministic hash；
 - relation flatten/reference。
 
-后期可考虑 CEL/JQ，但 MVP 不需要自建脚本语言。
+后期可考虑 CEL/JQ，但 MVP 不执行任意 Python/JS/Jinja。
 
 ---
 
@@ -338,15 +379,15 @@ projection:
       target: host-0099
 ```
 
-### Deterministic selection
+`percentage` 使用基于 `(seed, node_id, defect_id)` 的 deterministic hash，不能调用不可控 runtime random。
 
-`percentage` 不能调用不可控的 runtime random；应使用基于 `(seed, node_id, defect_id)` 的 deterministic hash 判断。
+Visual Builder 可为常用 defects 提供比例/范围控件，但底层仍生成同一结构化声明。
 
 ---
 
 ## 9. Source Driver 配置
 
-Driver-specific 内容放在 `driverConfig`，核心 schema 只验证通用字段，具体 Driver 再做二次 schema 校验。
+Driver-specific 内容放在 `driverConfig`，核心 schema 验证通用字段，具体 Driver 再二次 schema 校验。
 
 ```yaml
 sources:
@@ -360,7 +401,9 @@ sources:
         datacenters: 1
 ```
 
-Compiler 调用 Driver capability/schema 验证，不允许未知字段悄悄被忽略。
+Compiler 调用 Driver capability/schema 验证，不允许未知字段悄悄忽略。
+
+普通用户 UI 优先展示 capability-aware controls；raw `driverConfig` 属于 Advanced/Expert surface。
 
 ---
 
@@ -416,17 +459,17 @@ sources:
       steps: 3
 ```
 
-这样 Truth 已变化，但 Excel source 仍然暴露旧版本。
+Truth 已变化，但 Excel source 仍可暴露旧版本。
+
+Timeline 普通操作通过 Guided UI 构造，Expert YAML 只用于高级/精确场景。
 
 ---
 
 ## 11. Network / Protocol Faults 与语义 Defects 分离
 
-不要把所有故障都放到 `projection.defects`。
-
 ### Semantic
 
-改变“数据内容”：
+改变数据内容：
 
 ```yaml
 projection.defects
@@ -462,11 +505,13 @@ faults:
 
 Driver capability 决定是否支持某个 fault。
 
+普通用户通过 Guided Fault UI 选择 Source / Type / Parameters；YAML 是高级表示。
+
 ---
 
 ## 12. Source Refresh / Staleness
 
-企业数据源很少完全实时，因此 source projection 要明确真值版本：
+企业数据源很少完全实时，因此 source projection 明确真值版本：
 
 ```json
 {
@@ -529,7 +574,7 @@ Diagnostics 统一结构：
 }
 ```
 
-错误禁止 Start；warning 可由用户接受。
+错误禁止 Start；warning 可由用户理解后继续。
 
 典型错误：
 
@@ -544,13 +589,15 @@ Diagnostics 统一结构：
 - timeline references missing entity；
 - Driver resource estimate exceeds configured local budget。
 
+Diagnostics 应能从 Visual Builder / structured preview 定位到相应配置；Expert YAML 则定位到 path/line。
+
 ---
 
 ## 15. Scale 设计
 
-不要要求 YAML 显式写 100,000 条对象。
+不要要求 YAML 显式写 100,000 条对象，也不要要求用户在 Builder 中逐个创建对象。
 
-大规模场景必须依赖：
+大规模场景依赖：
 
 - generate/count；
 - templates；
@@ -559,7 +606,7 @@ Diagnostics 统一结构：
 - vectorized/batched persistence；
 - streaming artifact render。
 
-Compile Preview 在真正物化前先给出估算：
+Compile Preview 在物化前先估算：
 
 ```text
 nodes: ~101,200
@@ -569,17 +616,33 @@ estimated memory: 2.4 GiB
 estimated artifact size: 180 MiB
 ```
 
+AI/Builder 应生成 compact rules，而不是把 100k 对象展开进 Working Copy。
+
 ---
 
 ## 16. v1alpha1 明确暂不支持
 
 - arbitrary embedded Python/JS；
-- Jinja 模板任意执行；
+- Jinja 任意执行；
 - 用户任意 Docker image；
-- source 在每次请求时调用 LLM；
+- source 每次请求调用 LLM；
 - 任意 DAG/workflow；
-- 多用户冲突合并；
+- 多用户实时冲突合并；
 - distributed Truth Graph；
 - graph query language。
 
-保持 DSL 可审计和可确定性比“万能表达能力”更重要。
+保持 DSL 可审计和确定性，比“万能表达能力”更重要。
+
+---
+
+## 17. Product-level invariants
+
+无论 Scenario 是 AI、Builder 还是 Expert YAML 创建，都必须满足：
+
+1. 只有一个 authoritative Working Copy model；
+2. 保存后 Revision immutable；
+3. Compiler/Driver 不知道配置来自哪个 UI；
+4. AI Candidate 必须先 validate 再 Apply；
+5. Builder 不得丢失合法 advanced fields；
+6. Expert YAML 不是普通用户完成主流程的前置条件；
+7. 同 Revision + pinned versions 的 deterministic runtime 合同一致。
