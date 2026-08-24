@@ -2,12 +2,12 @@
 
 ## 1. 路线原则
 
-路线按“先证明独特核心，再扩协议”的顺序：
+路线按“先建立正确产品入口，再证明独特核心，再扩协议”的顺序：
 
 ```text
-M0 产品骨架 / DLR UI 复用
+M0 工程骨架 + 新前端设计系统 + Visual Builder
         ↓
-M1 Truth + Projection + 首批可运行 Sources
+M1 Scenario/Truth/Projection + 首批 Sources + 基础 AI Authoring
         ↓
 M2 Lifecycle + Fault + Verification 闭环
         ↓
@@ -16,53 +16,71 @@ M3 核心基础设施协议包
 M4A 云与标准管理协议    M4B 企业真实服务与 Record/Replay
         └──────────┬──────────┘
                    ↓
-M5 AI Scenario Assistant / Imports
+M5 高级 AI / Imports / Attachments / Tools
                    ↓
 M6 Scale / Recovery / Remote Agent / Release
 ```
 
-不能反过来变成：先接 20 个 Simulator，最后才发现没有统一 Truth 和验证闭环。
+不能反过来变成：先接 20 个 Simulator，最后才发现没有统一 Truth 和验证闭环；也不能把 YAML 编辑器做成产品主入口后再补易用性。
 
-当前每个阶段都已经建立成一个较大的 GitHub Issue，用于匹配 Qoder Go Mode 的“整波实现 + direct main + 外部 Review”工作流。
+当前每个阶段都是较大的 GitHub Issue，匹配 Qoder Go Mode 的“整波实现 + direct main + 外部 Review”工作流。
 
 ---
 
-# M0 — Foundation & DLR UI Parity
+# M0 — Foundation & Frontend Product Baseline
 
 Issue: [#1](https://github.com/john-ops-lab/InfraSourceLab/issues/1)
 
 ## 目标
 
-建立可持续工程骨架和运行权限边界。
+建立可持续工程骨架、运行权限边界和正确的产品交互方向。
 
 ## 主要交付
+
+### Backend / Runtime
 
 - Python 3.13 / uv / FastAPI；
 - PostgreSQL + SQLAlchemy2 + Alembic；
 - 独立 Lab Agent，Control 不持有 Docker socket；
 - Docker Compose；
-- React19/TS/Vite/AntD/Monaco/assistant-ui/i18next；
-- Scenario Catalog + Workbench + Revision；
+- Scenario / immutable Revision 基础模型；
 - Driver Registry / capability API；
-- Run 状态骨架和 run-scoped labels/network；
-- 复用 DLR AI 面板交互的 deterministic fake Candidate→Diff→Apply；
-- CI + real-browser smoke。
+- Run 状态骨架和 run-scoped labels/network。
+
+### Frontend
+
+- React 19 + TypeScript + Vite 7；
+- Tailwind CSS v4 + shadcn/ui；
+- assistant-ui；
+- Monaco 仅作为 Expert YAML；
+- UI Skills 作为设计工程流程；
+- Chrome DevTools MCP 作为真实浏览器 Agent 验收；
+- Create Lab / AI-first 首页；
+- Visual Builder skeleton；
+- Scenario Overview / list / revision；
+- Expert YAML；
+- deterministic fake AI Candidate → structured preview → Apply；
+- CI + Playwright regression。
 
 ## 完成判据
 
-fresh clone 可启动；Scenario revision 不可变；Agent 能安全启动/清理一个 allowlisted test source；cleanup 不碰无关 Docker 资源；DLR-style UI 与 AI layout contract 通过浏览器验收。
+fresh clone 可启动；Scenario revision 不可变；普通用户可以不写 YAML 创建基础场景 Working Copy；Agent 能安全启动/清理 allowlisted test source；cleanup 不碰无关 Docker 资源；真实 Chrome 完成 Create→Builder→Expert→Save 主流程，无 Console/Network 异常。
 
 ---
 
-# M1 — Deterministic World
+# M1 — Deterministic World & Basic AI Authoring
 
 Issue: [#2](https://github.com/john-ops-lab/InfraSourceLab/issues/2)
 
 ## 目标
 
-第一次真正构建“同一世界 → 多数据源”。
+第一次真正实现：
+
+> **自然语言 / Builder → validated Scenario → deterministic canonical world → multiple runnable sources。**
 
 ## 主要交付
+
+### Core
 
 - Scenario `v1alpha1`；
 - parser/schema/semantic diagnostics；
@@ -72,16 +90,29 @@ Issue: [#2](https://github.com/john-ops-lab/InfraSourceLab/issues/2)
 - Source Projection + semantic defects；
 - canonical/native identity map；
 - compile manifest/digests/version provenance；
-- Ground Truth API；
+- Ground Truth API。
+
+### First Sources
+
 - Artifact Driver：JSON/YAML/CSV/xlsx；
 - Mockoon REST Driver；
 - real PostgreSQL Driver；
-- 10k scale/reproducibility tests；
-- Web World/Sources/Compile preview。
+- 10k scale/reproducibility tests。
+
+### Product / AI
+
+- OpenAI-compatible basic provider abstraction；
+- prompt → structured Scenario Candidate；
+- schema/semantic/capability/resource validation；
+- AI / Visual Builder / Expert YAML 共用同一个 Working Copy；
+- compile preview / resource estimate；
+- World / Sources preview；
+- structured change summary；
+- clear Apply → Save → Compile → Start boundary。
 
 ## 完成判据
 
-相同 revision/seed/pinned versions 能稳定产生相同 Truth/source digests；HTTP 与 PostgreSQL 都由普通真实 client 连接；ISL 内部没有重新实现 HTTP/PostgreSQL 协议。
+相同 revision/seed/pinned versions 稳定产生相同 Truth/source digests；HTTP/PostgreSQL 由普通真实 client 连接；自然语言能生成一个经过服务端验证的 Scenario Candidate；用户不需要写 YAML 即可完成创建、调整、保存、编译和启动首批 Sources。
 
 ---
 
@@ -91,7 +122,7 @@ Issue: [#3](https://github.com/john-ops-lab/InfraSourceLab/issues/3)
 
 ## 目标
 
-从“数据生成器”升级为真正的 DLR/CMDB Integration Test Platform。
+从“确定性数据源实验室”升级为真正的 DLR/CMDB Integration Test Platform。
 
 ## 主要交付
 
@@ -110,11 +141,16 @@ Issue: [#3](https://github.com/john-ops-lab/InfraSourceLab/issues/3)
 - JSON report + Web findings；
 - DLR E2E sample/test pack。
 
+## 前端
+
+- Timeline 与 Fault 用 Guided UI，避免要求用户手写 action YAML；
+- Verification 使用高信息密度 shadcn Table/Filter/Detail 组合；
+- finding 可进入 AI 上下文的高级能力可在 M5 完成；
+- Chrome DevTools MCP 验证 fault/verify 主流程与大列表性能。
+
 ## 完成判据
 
 一个测试能完成：Source 启动 → DLR/consumer 采集 → Observation → Verify → Timeline 变化 → latency/429 等故障 → 再次采集与解释结果。
-
-这是第一阶段最重要里程碑。
 
 ---
 
@@ -122,49 +158,19 @@ Issue: [#3](https://github.com/john-ops-lab/InfraSourceLab/issues/3)
 
 Issue: [#4](https://github.com/john-ops-lab/InfraSourceLab/issues/4)
 
-## 目标
-
-覆盖 CMDB 最核心、最难本地长期拥有的基础设施来源，而且不重新实现协议。
-
 ## Mandatory Drivers
 
-### vCenter
+- vCenter → govmomi/vcsim；
+- Kubernetes → KWOK；
+- SNMP → snmpsim；
+- Redfish → DMTF Redfish Interface Emulator；
+- Network CLI → FakeNOS。
 
-- govmomi/vcsim；
-- Datacenter/Cluster/Host/VM/Datastore/Network；
-- MoRef/UUID/native path mapping；
-- migration/power/status lifecycle。
+每个 Driver 必须有真实外部 client、canonical↔native identity map、meaningful timeline action、fault、Source Fidelity fixture、ARM64/版本/许可证证据和无泄漏 cleanup。
 
-### Kubernetes
+### 前端
 
-- KWOK；
-- Cluster/Node/Pod/Workload/owner relationships；
-- 大规模 fixture；
-- patch/delete/reschedule timeline。
-
-### SNMP
-
-- snmpsim；
-- common inventory profiles；
-- v2c first, v3 capability；
-- changing counters/protocol errors/delay。
-
-### Redfish
-
-- DMTF Redfish Interface Emulator；
-- Chassis/System/CPU/Memory/Storage/NIC；
-- dynamic lifecycle。
-
-### Network CLI
-
-- FakeNOS；
-- common inventory commands；
-- Truth-driven CLI output；
-- multiple logical devices。
-
-## 完成判据
-
-每个 Driver 都有真实外部 client、canonical↔native identity map、至少一个 meaningful timeline action、fault、Source Fidelity fixture、ARM64/版本/许可证证据以及无泄漏 cleanup。
+Sources 页面保持 capability-driven shared UI，不为五个 Driver 各做一套风格。特殊协议信息按渐进披露显示。
 
 ---
 
@@ -172,7 +178,7 @@ Issue: [#4](https://github.com/john-ops-lab/InfraSourceLab/issues/4)
 
 Issue: [#5](https://github.com/john-ops-lab/InfraSourceLab/issues/5)
 
-## Mandatory Drivers
+Mandatory：
 
 - AWS → Moto standalone；
 - Azure Storage → Azurite；
@@ -180,11 +186,7 @@ Issue: [#5](https://github.com/john-ops-lab/InfraSourceLab/issues/5)
 - NETCONF/YANG → Netopeer2 + sysrepo；
 - libvirt → official test driver。
 
-LocalStack 只允许 optional user-provided integration，不作为默认 AWS 依赖。
-
-## 完成判据
-
-每个 mandatory Driver 通过标准 SDK/client 访问、支持 Truth-driven seed 与 timeline mutation，并进入统一 Fault/Verifier 体系；云 SDK 必须 fail-closed，避免误打真实云。
+LocalStack 仅 optional user-provided integration，不作为默认依赖。
 
 ---
 
@@ -192,11 +194,7 @@ LocalStack 只允许 optional user-provided integration，不作为默认 AWS �
 
 Issue: [#6](https://github.com/john-ops-lab/InfraSourceLab/issues/6)
 
-## 目标
-
-对于“真实服务很容易启动”的协议，直接跑真的，不做 fake wire protocol。
-
-## Mandatory Packs
+对于真实服务很容易启动的协议，直接跑真的：
 
 - MySQL/MariaDB；
 - Redis；
@@ -205,37 +203,36 @@ Issue: [#6](https://github.com/john-ops-lab/InfraSourceLab/issues/6)
 - Eclipse Mosquitto；
 - SFTP/OpenSSH；
 - OpenLDAP；
-- real NetBox seeded from Truth；
-- Hoverfly HTTP capture/replay；
-- scrapli-replay SSH capture/replay；
-- Prism contract mode。
+- real NetBox；
+- Hoverfly；
+- scrapli-replay；
+- Prism。
 
-M4A/M4B 在当前 direct-main 流程下**不要并发实施**，避免共享 Driver/Core 文件交叉污染 Review base/head。
+M4A/M4B 在 direct-main 下不要并发实施。
 
 ---
 
-# M5 — AI Scenario Assistant & Imports
+# M5 — Advanced AI & Imports
 
 Issue: [#7](https://github.com/john-ops-lab/InfraSourceLab/issues/7)
 
-## 目标
+## 定位变化
 
-实现“告诉平台想模拟什么 → AI 生成/修改 Scenario → Diff → Apply”，但 AI 不进入不可控运行路径。
+**基础 AI authoring 已在 M1 完成。** M5 不再是“第一次接 AI”，而是把 AI 变成成熟的上下文助手与导入助手。
 
 ## 主要交付
 
-- OpenAI-compatible provider + provider abstraction；
-- 直接复用 DLR assistant-ui UX/External Store 交互模式；
-- frozen round snapshot / Regenerate；
-- structured Scenario Candidate；
-- schema/semantic/capability/resource/security validation；
-- Candidate Diff/Apply；
+- assistant-ui advanced runtime UX；
+- attachments；
+- importer registry；
+- OpenAPI / JSON Schema / JSON/YAML / CSV/xlsx / HAR / Postman；
 - context snippets；
-- read-only tools；
-- attachment/import registry；
-- OpenAPI/JSON Schema/JSON/YAML/CSV/xlsx/HAR/Postman 第一批 importer；
-- raw capture sanitization；
-- stale candidate protection。
+- read-only tool calls；
+- Regenerate / frozen request snapshot；
+- stale candidate / rebase conflict UX；
+- verification explain；
+- richer generative UI / approval UI；
+- sanitization / prompt-injection hardening。
 
 AI 永远不能直接 Save/Start/Stop/Delete/Fault/Docker。
 
@@ -245,11 +242,7 @@ AI 永远不能直接 Save/Start/Stop/Delete/Fault/Docker。
 
 Issue: [#8](https://github.com/john-ops-lab/InfraSourceLab/issues/8)
 
-## 目标
-
-把个人开发工具打磨成可长期公开维护、可升级、可恢复、可审计的开源项目。
-
-## 主要交付
+主要交付：
 
 - 100k Truth/Observation benchmark；
 - streaming artifacts / verifier performance；
@@ -262,17 +255,17 @@ Issue: [#8](https://github.com/john-ops-lab/InfraSourceLab/issues/8)
 - amd64/arm64/Apple Silicon support matrix；
 - SBOM/image scan/third-party license inventory；
 - JUnit/CI verification output；
-- thin API client CLI if still needed；
+- thin CLI if needed；
 - release-quality examples/docs；
 - public contributor/security guidance。
 
-仓库 LICENSE 必须由 owner 在首个稳定公开发布前明确决定，Go Mode 不能自行添加/修改。
+前端 release gate 加入真实 Chrome performance trace 与重点页面响应式证据。
 
 ---
 
 # Future — Only If Demand Appears
 
-当前 Gap Map 见 [`research/cmdb-source-coverage.md`](research/cmdb-source-coverage.md)。目前确认未来可按现有 Driver/Fidelity 架构加入、但不进入当前承诺的方向包括：
+Gap Map：[`research/cmdb-source-coverage.md`](research/cmdb-source-coverage.md)。可能方向：
 
 - DNS/CoreDNS；
 - DHCP/Kea；
@@ -282,15 +275,13 @@ Issue: [#8](https://github.com/john-ops-lab/InfraSourceLab/issues/8)
 - RESTCONF/gNMI；
 - OpenStack DevStack + Nova FakeDriver；
 - SMB/NFS；
-- Prometheus/OpenSearch 等运维数据源；
+- Prometheus/OpenSearch；
 - containerlab/GNS3/user-provided vendor NOS；
-- Proxmox/Ceph 的 contract/capture/real-lab integrations；
+- Proxmox/Ceph contract/capture/real-lab；
 - scenario marketplace；
 - collaborative editing；
 - SaaS；
 - FDE-oriented broader synthetic enterprise environment。
-
-这些方向没有一个要求现在重构 Core。
 
 ---
 
@@ -305,7 +296,7 @@ Issue: [#8](https://github.com/john-ops-lab/InfraSourceLab/issues/8)
    ↓
 #4 M3
    ↓
-#5 M4A → #6 M4B   (direct-main 下串行实现)
+#5 M4A → #6 M4B   (direct-main 下串行)
    ↓
 #7 M5
    ↓
@@ -316,16 +307,33 @@ Issue: [#8](https://github.com/john-ops-lab/InfraSourceLab/issues/8)
 
 ---
 
+# 前端跨 Wave 红线
+
+从 M0 到 M6 始终保持：
+
+- UI Skills 指导设计；
+- shadcn/ui 为唯一主要通用组件体系；
+- assistant-ui 为 AI UX 基础；
+- Chrome DevTools MCP 为 Agent 浏览器检查工具；
+- Playwright 固化稳定回归；
+- Monaco 是 Expert YAML，不是普通用户默认入口；
+- 不引入 Ant Design；
+- 不复制 DLR CSS/Design System/Shell；
+- UI 完成必须有真实 Chrome 证据。
+
+---
+
 # 优先级判断规则
 
 新增需求进入路线前问：
 
-1. 它是否直接帮助 DLR/CMDB 测试？
-2. 它是否证明 ISL 的独特核心？
-3. 有无成熟工具可编排？
-4. 能否直接跑真实轻量服务？
-5. 是否会导致我们自己维护复杂协议？
-6. 是否要求高权限/受限镜像？
-7. 没有它，当前用户流程是否真的走不通？
+1. 是否直接降低用户创建/验证实验环境的成本？
+2. 是否帮助 DLR/CMDB 测试？
+3. 是否证明 ISL 独特核心？
+4. 有无成熟工具可编排？
+5. 能否直接跑真实轻量服务？
+6. 是否会导致自己维护复杂协议？
+7. 是否要求高权限/受限镜像？
+8. 没有它，当前用户流程是否真的走不通？
 
-前两项弱、后几项成本高的功能默认后置。
+高用户价值、低重复造轮子优先。
