@@ -6,74 +6,83 @@
 
 InfraSourceLab（ISL）是一个面向 **CMDB / ITOM / 数据采集与集成测试** 的基础设施数据源实验室。
 
-它不是一个“随机 JSON 生成器”，也不准备重新实现 vCenter、Kubernetes、SNMP、Redfish、数据库、消息队列等成熟协议。它的核心职责是：
+它不是随机 JSON 生成器，也不准备重新实现 vCenter、Kubernetes、SNMP、Redfish、数据库、消息队列等成熟协议。核心职责是：
 
 1. 用 Scenario 描述一个完整、可重复的 IT 世界；
-2. 编译出统一的 **Truth Graph（真实配置图谱）**；
+2. 编译出统一的 **Truth Graph**；
 3. 把同一份真实世界投影成多个数据源各自“看见”的数据；
-4. 编排成熟模拟器或真实轻量服务来暴露这些数据；
+4. 编排成熟模拟器或真实轻量服务暴露这些数据；
 5. 注入脏数据、延迟、故障、漂移和生命周期变化；
 6. 接收 DLR / CMDB 的采集结果，并与 Ground Truth 自动对比。
 
-项目当前处于 **设计与早期开发阶段**。产品、架构、工具调研和第一轮完整开发 Issues 已建立，代码实现从 [M0 Issue #1](https://github.com/john-ops-lab/InfraSourceLab/issues/1) 开始。
+项目当前处于 **设计与早期开发阶段**。完整开发从 [M0 Issue #1](https://github.com/john-ops-lab/InfraSourceLab/issues/1) 开始。
 
 ---
 
-## 为什么做它
+## 产品体验：AI-first，不要求普通用户手写 YAML
 
-开发数据采集平台和 CMDB 时，一个长期问题是：测试环境很难同时拥有 vCenter、Kubernetes、服务器 BMC、网络设备、云 API、数据库、消息队列、文件服务器等真实数据源。
+Scenario YAML 是底层可读、可版本化的资产，不是默认交互入口。
 
-更难的是，CMDB 真正需要验证的往往不是“接口能不能返回 JSON”，而是：
+```text
+A. AI Create / Describe Lab      ← 默认入口
+B. Visual Scenario Builder       ← 可视化精调
+C. YAML Expert Mode              ← Monaco 专家模式
+               ↓
+        Scenario Working Copy
+               ↓
+ Validate / Estimate / Preview
+               ↓
+          Save Revision
+               ↓
+        Compile / Start
+```
 
-- 同一台设备在不同来源里的标识并不完全一致；
-- 某个来源的数据比另一个来源晚几分钟；
-- serial 大小写不同、hostname 有短名/FQDN、IP 已变更但旧系统尚未同步；
-- 存在重复、缺失、错误关系、分页异常、401/429/500、超时和网络抖动；
-- 资产会创建、迁移、重命名、下线和删除。
+例如用户可以直接描述：
 
-InfraSourceLab 希望把这些现实问题变成 **可描述、可复现、可自动验证的测试场景**。
+> 模拟一家中型企业，上海和苏州两个数据中心，400 台物理机、1500 台 VM、3 个 Kubernetes 集群、200 个应用。数据来自 vCenter、SNMP、Redfish 和 Excel，其中 Excel 比真实状态晚一个版本，并制造少量 IP/hostname 冲突。
+
+平台先返回结构化场景摘要、数据源、数据质量设置和资源估算，用户可以直接创建、可视化调整，或进入高级 YAML。
+
+**普通用户不需要阅读 YAML 才能完成核心流程。**
 
 ---
 
 ## 核心模型
 
 ```text
-Natural Language / scenario.yaml
-              │
-              ▼
-      Scenario Compiler
-              │
-              ▼
-          Truth Graph
-       (nodes + edges)
-              │
-      ┌───────┼────────┐
-      │       │        │
-      ▼       ▼        ▼
- Source A  Source B  Source C
-  view      view      view
-      │       │        │
-      ▼       ▼        ▼
-  Simulator / Real Service / Contract Mock
-      │       │        │
-      └───────┼────────┘
-              ▼
-             DLR
-              │
-              ▼
-             CMDB
-              │
-              ▼
-        Observation API
-              │
-              ▼
-           Verifier
-              │
-              ▼
-   Expected vs Actual Report
+Natural Language / Visual Builder / Expert YAML
+                    │
+                    ▼
+             Scenario Working Copy
+                    │
+                    ▼
+             Scenario Compiler
+                    │
+                    ▼
+                Truth Graph
+             (nodes + edges)
+                    │
+            ┌───────┼────────┐
+            ▼       ▼        ▼
+        Source A Source B Source C
+            │       │        │
+            ▼       ▼        ▼
+    Simulator / Real Service / Contract Mock
+                    │
+                    ▼
+              DLR / CMDB / Client
+                    │
+                    ▼
+              Observation API
+                    │
+                    ▼
+                 Verifier
+                    │
+                    ▼
+          Expected vs Actual Report
 ```
 
-**关键原则：AI 负责帮助编写 Scenario，不在每次请求到来时临时生成响应。** 场景一旦编译，运行时必须尽量确定、可复现、可自动测试。
+AI 负责帮助**编写 Scenario**，不在每次数据请求到来时临时生成随机响应。场景编译后，运行时必须尽量确定、可复现、可自动测试。
 
 ---
 
@@ -87,85 +96,128 @@ InfraSourceLab 采用“统一控制层 + Driver”的方式复用成熟生态�
 | Kubernetes | Kubernetes SIG `KWOK` |
 | SNMP | `snmpsim` |
 | Redfish / BMC | DMTF Redfish Interface Emulator |
-| 网络设备 CLI / SSH | `FakeNOS`，录制回放使用 `scrapli-replay` |
+| 网络设备 CLI / SSH | `FakeNOS`；录制回放 `scrapli-replay` |
 | AWS API | `Moto` |
 | Azure Storage | `Azurite` |
 | Google Cloud Storage | `fake-gcs-server` |
 | NETCONF / YANG | `Netopeer2 + sysrepo` |
-| 通用 REST / OpenAPI | 默认 `Mockoon CLI`，contract 可用 `Prism`，复杂多协议可选 `Microcks` |
+| 通用 REST / OpenAPI | `Mockoon CLI` / `Prism`；复杂多协议可选 `Microcks` |
 | HTTP 录制回放 | `Hoverfly` |
-| PostgreSQL / MySQL / Redis / Kafka / MQTT / SFTP / LDAP 等 | **直接启动真实轻量服务并灌入场景数据** |
+| PostgreSQL / MySQL / Redis / Kafka / MQTT / SFTP / LDAP | **直接启动真实轻量服务并灌入场景数据** |
 | DNS | 后期直接使用真实 `CoreDNS` |
 | DHCP | 后期直接使用真实 `Kea` |
 | Active Directory | 后期可选真实 `Samba AD DC` |
 | 网络故障 | `Toxiproxy` |
 | 高保真网络拓扑 | 后期可选 `containerlab` / GNS3，用户自行提供合法镜像 |
 
-完整工具调研见 [`docs/research/tool-landscape.md`](docs/research/tool-landscape.md)，CMDB 数据源覆盖与未排期 Gap 见 [`docs/research/cmdb-source-coverage.md`](docs/research/cmdb-source-coverage.md)。
+完整工具调研见 [`docs/research/tool-landscape.md`](docs/research/tool-landscape.md)，CMDB 数据源覆盖与 Gap 见 [`docs/research/cmdb-source-coverage.md`](docs/research/cmdb-source-coverage.md)。
 
----
+### 数据源保真度分层
 
-## 数据源保真度分层
+- **L0 — Artifact**：JSON / YAML / CSV / Excel；
+- **L1 — Contract Mock**：OpenAPI / JSON Schema 等契约；
+- **L2 — Protocol Emulator**：vcsim、KWOK、snmpsim、Redfish、FakeNOS；
+- **L3 — Real Service**：PostgreSQL、Redis、Kafka、MQTT、DNS、LDAP 等；
+- **L4 — Virtual Appliance Lab**：containerlab / GNS3 + 用户合法提供的厂商镜像。
 
-InfraSourceLab 不追求所有数据源都达到同一种保真度，而是使用满足测试目的的最低成本方案：
-
-- **L0 — Artifact**：JSON / YAML / CSV / Excel 等静态或版本化文件；
-- **L1 — Contract Mock**：根据 OpenAPI / JSON Schema 等契约生成接口；
-- **L2 — Protocol Emulator**：vcsim、KWOK、snmpsim、Redfish、FakeNOS 等；
-- **L3 — Real Service**：真实 PostgreSQL、Redis、Kafka、MQTT、DNS、LDAP 等轻量服务；
-- **L4 — Virtual Appliance Lab**：containerlab / GNS3 + 用户提供的厂商镜像，仅用于必须高保真的场景。
-
-选择规则：**能用 L1 证明的问题不要上 L4；已有成熟模拟器的协议不要自己重新实现；真实服务很轻时直接跑真的。**
+选择规则：**已有成熟模拟器就编排它；真实服务很轻就直接跑真的；最后才考虑自研薄协议层。**
 
 ---
 
 ## 与 DataLinkRuntime 的关系
 
-InfraSourceLab 是数据源侧测试环境；[DataLinkRuntime](https://github.com/john-ops-lab/DataLinkRuntime) 是采集、解析、转换与数据适配运行层。二者边界保持独立：
+InfraSourceLab 是数据源侧测试环境；[DataLinkRuntime](https://github.com/john-ops-lab/DataLinkRuntime) 是采集、解析、转换与数据适配运行层。两者业务边界独立：
 
 ```text
 InfraSourceLab  →  DataLinkRuntime  →  CMDB / other targets
    Source Lab       Adapter Runtime      Consumer
 ```
 
-InfraSourceLab 的 Web 技术栈、视觉语言和 AI 交互尽可能与 DLR 保持一致，以降低维护成本：React 19 + TypeScript + Vite + Ant Design + Monaco + assistant-ui + i18next。
+**DLR 不再作为 InfraSourceLab 的前端视觉或组件实现基线。** 两个项目可以共享业务经验，但 ISL 使用独立的现代前端设计工程体系。
 
-AI 交互继续沿用 DLR 已验证的：
+---
+
+## 前端设计工程基线
+
+InfraSourceLab 前端正式采用：
+
+- **UI Skills** — `ibelick/ui-skills`：设计工程方法与 Agent skills；
+- **shadcn/ui** — `shadcn-ui/ui`：主要 UI 组件与设计系统；
+- **assistant-ui** — `assistant-ui/assistant-ui`：AI 对话和 Generative UI；
+- **Chrome DevTools MCP** — `ChromeDevTools/chrome-devtools-mcp`：真实 Chrome 点击、截图、Console/Network、性能与响应式检查。
+
+运行时建议：
 
 ```text
-Working Copy + Explicit Context
-             ↓
-      Scenario Candidate
-             ↓
-          Diff
-             ↓
-Apply to browser Working Copy
-             ↓
-      User Save / Compile / Start
+React 19 + TypeScript + Vite 7
+Tailwind CSS v4 + shadcn/ui
+assistant-ui
+Monaco (Expert YAML only)
+i18next
+Vitest + Testing Library
+Playwright
 ```
 
-AI 不自动 Save、Start、Stop、Delete、Enable Fault，也不能直接向 Lab Agent 发送 Docker/shell 命令。
+明确不使用：
 
-复用边界见 [`docs/dlr-ui-reuse.md`](docs/dlr-ui-reuse.md)。
+```text
+Ant Design
+Ant Design Pro Components
+DLR Design System / CSS / Shell
+```
+
+完整设计见 [`docs/frontend-design.md`](docs/frontend-design.md)。
+
+---
+
+## AI 安全边界
+
+AI 的正常路径：
+
+```text
+Prompt + current model + Driver capabilities
+        ↓
+Scenario Candidate
+        ↓
+Schema / Semantic / Capability / Resource Validation
+        ↓
+Structured Summary + Visual Preview + optional YAML Diff
+        ↓
+User Apply
+        ↓
+Working Copy
+        ↓
+User Save / Compile / Start
+```
+
+AI 不自动：
+
+- Save Revision；
+- Start / Stop Run；
+- Step Timeline；
+- Enable destructive Fault；
+- Install Driver / pull arbitrary image；
+- 执行 shell；
+- 读取 secret。
 
 ---
 
 ## 开发路线与 Issues
 
-当前采用“大 Wave + Qoder Go Mode + direct main + 阶段外部 Review”的个人快速开发方式。每个 Wave 开始前在 Issue 记录 Base SHA，完成后记录 Head SHA 和测试证据，Issue 在 Review 通过前不关闭。
+当前采用“大 Wave + Qoder Go Mode + direct main + 阶段外部 Review”。
 
 | Wave | Issue | 目标 |
 |---|---|---|
-| M0 | [#1](https://github.com/john-ops-lab/InfraSourceLab/issues/1) | 工程骨架、DLR-style Web、Control/Lab Agent 权限分离 |
-| M1 | [#2](https://github.com/john-ops-lab/InfraSourceLab/issues/2) | Scenario Compiler、Truth Graph、Projection、Artifact/Mockoon/Postgres |
+| M0 | [#1](https://github.com/john-ops-lab/InfraSourceLab/issues/1) | 工程骨架、新前端设计系统、Visual Builder、Control/Lab Agent 分离 |
+| M1 | [#2](https://github.com/john-ops-lab/InfraSourceLab/issues/2) | Scenario Compiler、Truth Graph、Projection、首批 Sources、**基础 AI authoring** |
 | M2 | [#3](https://github.com/john-ops-lab/InfraSourceLab/issues/3) | Timeline、Toxiproxy、Observation、Verifier |
 | M3 | [#4](https://github.com/john-ops-lab/InfraSourceLab/issues/4) | vcsim、KWOK、snmpsim、Redfish、FakeNOS |
 | M4A | [#5](https://github.com/john-ops-lab/InfraSourceLab/issues/5) | Moto、Azurite、GCS、NETCONF、libvirt |
 | M4B | [#6](https://github.com/john-ops-lab/InfraSourceLab/issues/6) | DB/cache/MQ/SFTP/LDAP、NetBox、record/replay |
-| M5 | [#7](https://github.com/john-ops-lab/InfraSourceLab/issues/7) | AI Scenario Assistant + Import pipeline |
+| M5 | [#7](https://github.com/john-ops-lab/InfraSourceLab/issues/7) | 高级 AI：Imports、Attachments、Tools、Context、Regenerate |
 | M6 | [#8](https://github.com/john-ops-lab/InfraSourceLab/issues/8) | 100k scale、Remote Agent、Recovery/GC、Release hardening |
 
-当前 direct-main 流程下，大 Wave **串行实现，不并发修改 main**。详细规则见 [`docs/development-workflow.md`](docs/development-workflow.md)。
+大 Wave 在 `main` 上串行实现，不并发修改。详细规则见 [`docs/development-workflow.md`](docs/development-workflow.md)。
 
 ---
 
@@ -173,12 +225,12 @@ AI 不自动 Save、Start、Stop、Delete、Enable Fault，也不能直接向 La
 
 - [产品定义](docs/product.md)
 - [总体架构](docs/architecture.md)
+- [前端产品与设计工程方案](docs/frontend-design.md)
 - [Scenario 与 Truth Graph 模型](docs/scenario-model.md)
 - [模拟器与数据源后端策略](docs/backend-strategy.md)
 - [工具全景调研](docs/research/tool-landscape.md)
 - [CMDB 数据源覆盖与 Gap Map](docs/research/cmdb-source-coverage.md)
 - [重点项目源码拆解与设计借鉴](docs/research/source-deep-dive.md)
-- [DLR 前端与 AI 交互复用方案](docs/dlr-ui-reuse.md)
 - [故障、时间与自动验证设计](docs/verification-and-faults.md)
 - [安全与许可证边界](docs/security-and-licensing.md)
 - [Qoder Go Mode + 直接 main 开发与 Review 工作流](docs/development-workflow.md)
@@ -197,10 +249,8 @@ AI 不自动 Save、Start、Stop、Delete、Enable Fault，也不能直接向 La
 - 对所有厂商私有协议的重新实现；
 - 在运行时依赖任何特定 AI 会员或 Coding Agent。
 
-未来如果这些能力自然形成独立价值，再按真实需求扩展，而不是提前做“大而全”。
-
 ---
 
 ## License
 
-仓库尚未选择开源许可证。由于项目会编排多个不同许可证的外部工具，建议在首个稳定公开发布版本前由仓库所有者明确选择 **Apache-2.0 或 MIT**，并保持第三方组件的许可证与 NOTICE 清单。不要在未确认前复制受限许可证项目的源码进入本仓库。
+仓库尚未选择开源许可证。首个稳定公开发布版本前，由仓库所有者明确选择 **Apache-2.0 或 MIT**，并维护第三方组件许可证与 NOTICE 清单。不要在未确认前复制受限许可证项目源码。
