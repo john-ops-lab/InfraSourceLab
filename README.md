@@ -253,4 +253,4 @@ AI 不自动：
 
 ## License
 
-仓库尚未选择开源许可证。首个稳定公开发布版本前，由仓库所有者明确选择 **Apache-2.0 或 MIT**，并维护第三方组件许可证与 NOTICE 清单。不要在未确认前复制受限许可证项目源码。
+InfraSourceLab 使用 **Apache License 2.0**，见根目录 [`LICENSE`](LICENSE)。第三方模拟器、服务、库与容器继续遵循各自许可证与再分发条件；详细边界见 [`docs/security-and-licensing.md`](docs/security-and-licensing.md)。
