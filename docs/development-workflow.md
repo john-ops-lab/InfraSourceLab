@@ -11,30 +11,13 @@ InfraSourceLab 当前采用个人快速开发模式：
 - Review 以 **Git commit range + 实际 main 源码** 为依据；
 - GitHub Issues 负责记录需求、验收条件和 review follow-up。
 
-这种模式可以成立，但必须保留“从哪里开始、做到哪里结束”的可审计边界，否则一次 Go Mode 改几十个文件后无法高质量 Review。
+这种模式可以成立，但必须保留明确 Base/Head 和严格验证证据。
 
 ---
 
 ## 2. 一个 Issue = 一个大 Wave
 
-Issue 刻意比传统 Scrum Task 大，例如：
-
-```text
-[M1] Deterministic Scenario Compiler + Truth Graph + first source drivers
-```
-
-而不是拆成：
-
-```text
-加一个表
-加一个 API
-加一个按钮
-写一个 seed helper
-```
-
-这是为了匹配 Go Mode 的自主执行特点。
-
-但一个 Wave 仍必须有明确：
+Issue 可以比传统 Scrum Task 大，但仍必须有：
 
 - Goal；
 - Scope；
@@ -50,14 +33,12 @@ Issue 刻意比传统 Scrum Task 大，例如：
 
 ### Step 1：同步 main
 
-Qoder 开始前本地：
-
 ```bash
 git checkout main
 git pull --ff-only
 ```
 
-必须 working tree clean。
+working tree 必须 clean。
 
 ### Step 2：记录 Base SHA
 
@@ -65,18 +46,16 @@ git pull --ff-only
 git rev-parse HEAD
 ```
 
-在对应 GitHub Issue 留言：
+在对应 Issue 留言：
 
 ```text
 Go Mode implementation started.
 Base SHA: <sha>
 ```
 
-这个 SHA 是未来无 PR Review 的“diff base”。
+### Step 3：先读产品/架构文档
 
-### Step 3：Qoder 先读文档
-
-每次至少要求读：
+每次至少读：
 
 ```text
 README.md
@@ -85,16 +64,31 @@ docs/architecture.md
 docs/scenario-model.md
 docs/backend-strategy.md
 docs/security-and-licensing.md
+docs/development-workflow.md
 当前 Wave Issue
 ```
 
-涉及 UI 再读：
+### 涉及前端时必须再读
 
 ```text
-docs/dlr-ui-reuse.md
+docs/frontend-design.md
 ```
 
-涉及 verifier/fault 再读：
+并明确当前前端正式基线：
+
+```text
+UI Skills
+shadcn/ui
+assistant-ui
+Chrome DevTools MCP
+React 19 + TypeScript + Vite
+Tailwind CSS v4
+Monaco = Expert YAML only
+```
+
+**不要参考 DLR 的 CSS、Ant Design、Shell 或页面布局作为实现基线。**
+
+### 涉及 verifier/fault 时再读
 
 ```text
 docs/verification-and-faults.md
@@ -109,55 +103,88 @@ docs/verification-and-faults.md
 - 文件组织细节；
 - 类/函数命名；
 - 测试拆分；
-- 普通 CRUD 实现；
+- 普通 CRUD；
 - 局部重构；
-- 修复开发中发现的明显 bug。
+- 修复开发中发现的明显 bug；
+- 在产品/架构约束内选择合适 shadcn 组件组合。
 
 ### 不允许静默改变
 
 - 产品定位；
+- **AI-first + Visual Builder + Expert YAML** 的 authoring 层级；
 - Truth-first 架构；
 - Control/Lab Agent 权限边界；
-- Scenario DSL 的核心语义；
-- Driver 不重复实现协议原则；
+- Scenario DSL 核心语义；
+- Driver 不重复实现成熟协议原则；
 - AI Candidate/Apply/Start 安全边界；
+- 前端唯一主要组件体系为 shadcn/ui；
 - 第三方许可证策略；
 - 公开网络/host mount/任意 image 安全策略。
 
-如果实现发现必须改变这些，Qoder 应停止该方向并在 Issue 记录设计冲突，而不是自行“优化架构”。
+若必须改变这些，先在 Issue 记录设计冲突，不自行“优化需求”。
 
 ---
 
-## 5. 开发期间提交
+## 5. 前端开发必须走 Design Engineering Loop
 
-不要求每个小功能一个 PR，但仍建议 Qoder 自己做**有意义的本地 commits**：
+涉及新页面、主流程或明显视觉改版时，不能直接从 prompt 跳到 JSX。
+
+```text
+产品目标
+  ↓
+UI Skills / relevant design skill
+  ↓
+信息架构 / 主任务 / progressive disclosure
+  ↓
+shadcn registry / docs / existing components
+  ↓
+实现
+  ↓
+Chrome DevTools MCP 真实浏览器检查
+  ↓
+修正视觉 / 交互 / Console / Network / Performance
+  ↓
+Playwright 固化稳定回归
+```
+
+### shadcn 规则
+
+- 先 `info/search/docs/view`，再决定是否自定义；
+- Button/Dialog/Table/Select/Form/Alert/Empty/Skeleton 等常规组件不得重复造轮子；
+- 使用 semantic theme tokens；
+- Dialog/Sheet/Drawer 保持可访问标题；
+- forms 使用规范 Field/validation 语义；
+- 大列表分页/虚拟化。
+
+### UI Skills
+
+是 Agent 的设计工程参考，不是产品 runtime dependency。
+
+### Chrome DevTools MCP
+
+是开发/Review 工具，不是产品 runtime dependency。它用来让 Agent 实际看页面，而不是只读 DOM/代码猜 UI。
+
+---
+
+## 6. 开发期间提交
+
+不要求每个小功能一个 PR，但建议有意义 commits：
 
 ```text
 feat(core): add scenario revision model
+feat(web): add guided scenario builder
 feat(compiler): build deterministic truth graph
-feat(driver): add artifact source
-fix(compiler): stabilize deterministic selector
+feat(ai): add validated scenario candidate
+fix(web): resolve narrow-width builder overflow
 ```
 
-最后都可以直接 push main。
-
-原因：
-
-- 出问题容易 bisect；
-- Review 可以按 commit 理解；
-- GitHub main 不只剩一个“changed 80 files”巨型提交。
-
-但不强制为了形式制造几十个 commit。
+最后直接 push main。
 
 ---
 
-## 6. Push main 前本地 Gate
-
-Qoder 必须执行并记录实际命令结果。
+## 7. Push main 前本地 Gate
 
 ### Backend
-
-预期最终类似：
 
 ```bash
 uv run ruff check .
@@ -182,20 +209,34 @@ npm run build
 ```text
 compose smoke
 driver smoke
-browser Playwright
 reproducibility test
 cleanup/orphan test
+Playwright browser regression
 ```
 
-### 禁止
+### 涉及 UI 的额外强制 Gate
 
-不能因为“时间太长”就把失败测试删掉、skip 掉或降低 assertion 后直接推 main。
+Qoder/Coding Agent 必须使用 Chrome DevTools MCP 在真实 Chrome 完成实际检查，并在 Issue 记录结果。
+
+至少检查：
+
+- 主任务点击路径；
+- screenshot / visual hierarchy；
+- Console error/warning；
+- Network failed/duplicate/slow requests；
+- empty/loading/error；
+- long text；
+- keyboard/focus；
+- 1024 / 1280 / 1440 / 1920 desktop；
+- 重页面 Performance trace（有需要时）；
+- AI UI 的 draft/message/candidate state；
+- Visual Builder 与 Expert YAML 是否保持同一 Working Copy。
+
+不能以 `npm run build` 替代 UI 验收。
 
 ---
 
-## 7. Qoder 完成时的 Issue 回报格式
-
-Qoder 在 Issue 留下：
+## 8. Qoder 完成时的 Issue 回报格式
 
 ```text
 Implementation complete.
@@ -205,12 +246,20 @@ Head SHA: <final>
 
 Implemented:
 - ...
-- ...
 
 Validation:
-- command A: PASS
-- command B: PASS
-- browser: PASS / evidence
+- backend: ... PASS
+- web: ... PASS
+- integration: ... PASS
+- Playwright: ... PASS
+
+Chrome DevTools MCP review:
+- flows checked: ...
+- widths: ...
+- Console: clean / findings
+- Network: clean / findings
+- performance: ...
+- screenshots/evidence: ...
 
 Known limitations:
 - ...
@@ -219,13 +268,11 @@ Docs updated:
 - ...
 ```
 
-然后把代码 push 到 main。
-
-Issue **先不要关闭**。
+push main 后 Issue **先不要关闭**。
 
 ---
 
-## 8. 无 PR Review 方法
+## 9. 无 PR Review 方法
 
 Reviewer 使用：
 
@@ -233,21 +280,19 @@ Reviewer 使用：
 Base SHA ... Head/main
 ```
 
-完整审查：
+审查：
 
 1. commit range；
 2. changed file list；
 3. critical file full content；
 4. tests；
-5. current architecture docs；
+5. current docs；
 6. CI；
-7. 必要时真实浏览器/运行验证。
+7. 真实浏览器/运行验证。
 
-### Review 重点不是只看 diff
+大 Wave 不能只看 diff。
 
-大 Wave 里某个新文件可能全是新增，单看 diff 很难理解；Reviewer 必须读完整实现和调用链。
-
-### Review Finding 严重度
+Finding：
 
 ```text
 Critical
@@ -255,13 +300,49 @@ Important
 Minor
 ```
 
-Critical/Important 必须修复后 Wave 才算过审。
+Critical/Important 必须修复后才过审。
 
 ---
 
-## 9. Review 结果如何写回 GitHub
+## 10. 前端 Review 的额外检查
 
-没有 PR 时，Review 直接写到 Wave Issue comment：
+Reviewer 不只问“像不像设计稿”，而是检查：
+
+### Product hierarchy
+
+- 新建是否仍以 AI/Builder 为主，而不是空 Monaco；
+- Expert YAML 是否保持高级入口；
+- 常见操作是否渐进披露；
+- 是否为高级 DSL 创建了大面积低代码表单垃圾场。
+
+### Component discipline
+
+- 是否优先使用 shadcn 组件；
+- 是否重新发明基础控件；
+- 是否偷偷引入 Ant Design/MUI 第二套体系；
+- 是否遵循 semantic token 和 accessibility。
+
+### AI UX
+
+- assistant-ui 是否作为基础；
+- Candidate 是否经过 server validation；
+- Apply 是否只修改 Working Copy；
+- AI 是否不能直接 Save/Run/Fault/Docker；
+- stale/late response 是否安全处理（相关 Wave）。
+
+### Browser evidence
+
+- 实际 Chrome screenshots；
+- Console/Network；
+- 关键宽度；
+- heavy view performance；
+- Playwright regression。
+
+---
+
+## 11. Review 结果写回 GitHub
+
+没有 PR 时，Review 写到 Wave Issue comment：
 
 ```text
 Review of <base>...<head>
@@ -281,31 +362,30 @@ Verified
 - ...
 ```
 
-如果 finding 需要跨 Wave 或较大重构，单独创建新的 GitHub Issue，并在当前 Wave 引用。
+需要跨 Wave 的大问题另建 Issue。
 
 ---
 
-## 10. 修复 Review
+## 12. 修复 Review
 
-优先让同一个 Qoder Go session/context（如果仍可用）或新的 Qoder session 读：
+新的 Qoder session 至少读：
 
 - 原 Issue；
 - Review comment；
 - 当前 main；
+- 相关产品/架构/前端设计文档。
 
-只修 review finding，不顺便开始下一 Wave。
+只修 finding，不顺便开始下一 Wave。
 
-修复完成后记录新 Head SHA，Reviewer 做 incremental review：
+修复完成记录新 Head SHA，Reviewer 审：
 
 ```text
 previous_head...new_head
 ```
 
-同时重验原问题。
-
 ---
 
-## 11. Wave 关闭条件
+## 13. Wave 关闭条件
 
 Issue 只有在：
 
@@ -315,85 +395,21 @@ Issue 只有在：
 - Important = 0；
 - 文档与实现一致；
 - CI main 通过；
-- 必要的 browser/runtime evidence 完成；
+- 必要 browser/runtime evidence 完成；
 
 之后才关闭。
 
-Minor 可单独记录后关闭当前 Wave，但不能让大量 Minor 变成无人跟踪的技术债。
-
 ---
 
-## 12. 为什么仍保留 Issues
+## 14. Driver Review 特殊要求
 
-即使不使用 PR，Issue 仍是：
-
-```text
-需求合同
-+ 开发起点 Base SHA
-+ Qoder 实现报告
-+ Reviewer 审计报告
-+ 修复历史
-+ 最终完成证据
-```
-
-这比在 `BACKLOG.md` 里写一句“做 vCenter 模拟”更适合公开项目，也能让未来社区理解项目演进。
-
----
-
-## 13. 避免 Direct-main 模式的几个坑
-
-### 坑 1：两个 Wave 同时改 main
-
-不要并发。否则 Review 的 base/head 混入其他需求。
-
-### 坑 2：开发期间手工夹杂大量无关 UI 调整
-
-当前 Wave 只做相关改动。新的想法建 Issue。
-
-### 坑 3：Qoder 自己改需求文档来让代码“符合”
-
-文档可以更新，但如果是**改变需求**而不是补充实现细节，必须在 Issue 明确说明。
-
-### 坑 4：直接 Review `main~1..main`
-
-Go Mode 可能多个 commit，必须用记录的 Base SHA。
-
-### 坑 5：没有测试证据就说完成
-
-Issue 最终需要命令级证据。
-
----
-
-## 14. 前端 Review 特殊要求
-
-如果 Wave 改 Web：
-
-除了 lint/typecheck/unit/build，必须有真实浏览器验收。
-
-至少检查：
-
-- 1440/1280；
-- empty/loading/error；
-- long text；
-- keyboard/focus；
-- console errors；
-- AI panel state；
-- destructive confirm；
-- zh-CN/en（相关页面）。
-
-尽量沿用 DLR 已经建立的 UI 测试习惯。
-
----
-
-## 15. Driver Review 特殊要求
-
-新增 Driver 除代码质量外必须验证：
+新增 Driver 必须验证：
 
 ```text
 start
 health
 seed/render
-client can connect
+real client can connect
 canonical ↔ native identity map
 supported timeline action
 fault capability
@@ -402,28 +418,22 @@ cleanup
 orphan recovery
 ```
 
-还要核对：
-
-- 第三方版本/许可证；
-- Docker image；
-- ARM64；
-- localhost/network exposure；
-- secret logging。
+还要核对：第三方版本/许可证、Docker image、ARM64、network exposure、secret logging。
 
 ---
 
-## 16. 推荐给 Qoder 的每波起始指令
-
-不在仓库放 Qoder 专属隐藏流程文件，Issue 本身就是执行合同。给 Go Mode 的开场可使用：
+## 15. 推荐给 Qoder 的每波起始指令
 
 ```text
-Read the repository product/architecture/security documents and the target GitHub Issue first.
+Read README.md, product, architecture, security, frontend-design (when web is touched), and the target GitHub Issue first.
 Implement the issue end-to-end on current main.
-Do not create a PR; this project uses direct-main development for now.
-Do not silently change product boundaries or reimplement mature protocols when a selected backend already exists.
-Run all required quality gates and integration/browser tests before pushing.
-When done, update the issue with Base SHA, Head SHA, implementation summary, exact validation results, known limitations and docs changed.
+Do not create a PR; this project currently uses direct-main development.
+For UI work, use UI Skills for design guidance, shadcn/ui as the primary component system, assistant-ui for AI UX, and Chrome DevTools MCP for real-browser inspection. Do not copy DLR UI or introduce Ant Design.
+Keep AI-first + Visual Builder as the normal authoring path; Monaco/YAML is Expert Mode.
+Do not reimplement mature protocols when a selected backend exists.
+Run all required quality, integration, Playwright and Chrome DevTools checks before pushing.
+When done, update the issue with Base SHA, Head SHA, implementation summary, exact validation results, Chrome evidence, known limitations and docs changed.
 Do not close the issue; it will be externally reviewed first.
 ```
 
-这个粒度适合 Go Mode，又保留了最终可审计性。
+这个粒度适合 Go Mode，也保留完整可审计性。
