@@ -28,7 +28,7 @@
 当前工作项：
 
 - [Issue #1](https://github.com/john-ops-lab/InfraSourceLab/issues/1)：**MVP 设计完成，尚未开始实现**；
-- [Issue #2](https://github.com/john-ops-lab/InfraSourceLab/issues/2)：**可选增强设计（简单拓扑、基础数据质量、数据库模式迁移策略），必须等待 #1 真正实现并验证后再决定是否开发**；
+- [Issue #2](https://github.com/john-ops-lab/InfraSourceLab/issues/2)：**可选增强设计，仅包含简单拓扑、基础数据质量和 CMDB 使用示例，必须等待 #1 真正实现并验证后再决定是否开发**；
 - Issues #3～#8：已关闭为“不计划实施”，不属于当前开发范围。
 
 权威状态说明见 [`docs/status.md`](docs/status.md)。
@@ -42,7 +42,7 @@ InfraSourceLab 计划提供最短闭环：
 ```text
 自然语言 / 内置模板
         ↓
-AI 生成小型 GenerationSpec
+AI 生成经过校验的 GenerationSpec
         ↓
 用户确认数量、关系和 seed
         ↓
@@ -72,16 +72,53 @@ AI 只负责把自然语言转换成结构化规格，不逐条生成上万条�
 
 Issue #2 中的简单拓扑和少量脏数据开关不是 #1 的前置条件。
 
+## 已固定的关键设计决策
+
+### 创建接口采用两步流程
+
+```text
+POST /api/v1/specs/from-prompt
+自然语言 → 经过校验的 GenerationSpec 建议
+
+POST /api/v1/datasets
+用户确认后的 GenerationSpec → 持久化数据集
+```
+
+内置模板也提交到同一个 `POST /api/v1/datasets`，不让数据集接口同时处理提示词和规格两套模式。
+
+### 关系明确覆盖方向
+
+`RelationSpec` 使用：
+
+```text
+strategy = balanced | random_seeded
+coverage = from | to
+```
+
+`coverage=from` 表示每个起点 CI 获得一条关系；`coverage=to` 表示每个终点 CI 获得一条关系。相同数据集内不允许重复边。
+
+### 搜索使用受控聚合字段
+
+CI 保存由 `ci_id`、`name`、`hostname`、`ip_address`、`management_ip`、`serial_number`、`code` 等白名单字段生成的小写 `search_text`。`q` 只查询该字段，不直接对整个 `attributes_json` 做模糊匹配，也不在 MVP 引入 FTS5。
+
+### SQLite 首版只做轻量版本标记
+
+首版使用 SQLite `PRAGMA user_version = 1`。空数据库自动建表并写入版本；发现不兼容的已有版本时明确停止启动并提示备份、删除后重建。MVP 不引入 Alembic 或自动升级链，真正出现保留旧数据的升级需求后再单独立项。
+
+### 创建页采用一次性规格生成
+
+Issue #1 的创建页固定为“一次提示词 → 结构化规格建议 → 用户调整 → 生成数据集”，使用 shadcn/ui 轻量组件实现，不强制引入聊天框架。只有未来明确需要多轮对话时才引入 assistant-ui，且不得同时维护两套 AI 创建界面。
+
 ## 开发过程中必须遵循的前端工具约束
 
-Issue #1 以及后续所有前端功能开发，必须遵循 [`docs/qoder-frontend-tooling.md`](docs/qoder-frontend-tooling.md) 的工具约束，不能只写进文档而不在实际开发和验收中使用。要点：
+权威要求见 [`docs/qoder-frontend-tooling.md`](docs/qoder-frontend-tooling.md)。要点：
 
-1. **UI Skills**（https://github.com/ibelick/ui-skills）：写页面代码前先完成界面设计判断，并在 Issue 完成报告中记录关键决定；
-2. **shadcn/ui**（https://github.com/shadcn-ui/ui）：前端组件和视觉体系的首选基础，不得同时引入第二套大型通用组件库；
-3. **Chrome DevTools MCP**（https://github.com/ChromeDevTools/chrome-devtools-mcp）：真实浏览器检查是前端完成的必过门槛，不能以“构建通过”或 Playwright 通过替代；
-4. **assistant-ui**（https://github.com/assistant-ui/assistant-ui）：多轮对话式 AI 交互的首选实现；若创建页交互只是“一次提示 → 结构化规格建议”，允许用 shadcn/ui 轻量组件实现，不必引入聊天框架，但同一交互不得重复造两套。
+1. **UI Skills**（https://github.com/ibelick/ui-skills）：写页面代码前完成界面设计判断，并在 Issue 完成报告中记录关键决定；
+2. **shadcn/ui**（https://github.com/shadcn-ui/ui）：作为前端组件和视觉体系的基础，不引入第二套大型通用组件库；
+3. **Chrome DevTools MCP**（https://github.com/ChromeDevTools/chrome-devtools-mcp）：真实浏览器检查是前端完成的必过门槛，不能以构建或 Playwright 通过替代；
+4. **assistant-ui**（https://github.com/assistant-ui/assistant-ui）：保留为未来多轮对话交互的首选组件；Issue #1 的一次性规格创建界面不要求引入。
 
-Playwright 继续用于自动化回归，但不能替代 Chrome DevTools MCP 的真实浏览器验收。若当前主开发工具无法直接调用 Chrome DevTools MCP，必须由能够调用它的 Codex、Claude 或其他兼容代理完成最终浏览器门槛，之后才能把前端标记为“等待审查”。
+Playwright 用于自动化回归，但不能替代 Chrome DevTools MCP 的真实浏览器验收。
 
 ## 明确不做
 
