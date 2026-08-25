@@ -35,7 +35,9 @@
 ```text
 描述数据需求
   ↓
-确认 AI 生成的规格
+获得经过校验的 GenerationSpec 建议
+  ↓
+确认或调整类型数量、关系覆盖方向和 seed
   ↓
 生成数据集
   ↓
@@ -60,23 +62,23 @@
 
 > 生成两个数据中心、20 个机柜、100 台物理服务器、500 台虚拟机、50 个应用、15 个数据库和一个 Kubernetes 集群。
 
-AI 计划输出小型 `GenerationSpec`，而不是直接输出数百或数千条记录。
+AI 输出小型 `GenerationSpec`，而不是直接输出数百或数千条记录。
 
 ### 4.2 本地生成保证速度与重复性
 
 ```text
-GenerationSpec + seed
+GenerationSpec + seed + 生成器版本
         ↓
 CI 记录 + CI 关系
 ```
 
-同一规格、seed 和生成器版本应得到相同结果。
+同一输入应得到相同结果。
 
 ### 4.3 通用接口先解决主要测试需求
 
-首版计划提供统一 REST API、JSON、CSV；XLSX 在不拖慢核心闭环时实现。
+首版提供统一 REST API、JSON、CSV；XLSX 在不拖慢核心闭环时实现。
 
-这些能力已经足以验证：
+这些能力足以验证：
 
 - CMDB 数据采集、接口和导入流程；
 - 分页、筛选和字段映射；
@@ -90,17 +92,23 @@ CI 记录 + CI 关系
 
 ### 流程一：通过 AI 创建数据集
 
+MVP 固定为一次性规格生成，不建设多轮聊天：
+
 ```text
 用户输入自然语言
   ↓
-AI 返回结构化规格和数量摘要
+POST /api/v1/specs/from-prompt
   ↓
-用户修改少量数量、关系或 seed
+AI 返回结构化规格、说明和警告
   ↓
-点击生成
+用户调整数量、关系或 seed
+  ↓
+POST /api/v1/datasets
   ↓
 进入数据集详情
 ```
+
+创建页使用 shadcn/ui 轻量组件完成提示词输入、加载、取消、错误、重试和规格确认。只有未来真实需求需要多轮修改时，才评估 assistant-ui。
 
 ### 流程二：无 AI 创建
 
@@ -108,8 +116,9 @@ AI 未配置时，用户仍可：
 
 - 选择内置模板；
 - 设置各 CI 类型数量；
+- 设置关系覆盖方向；
 - 设置 seed；
-- 生成数据。
+- 将最终规格提交到同一个 `POST /api/v1/datasets`。
 
 AI 是加速器，不是系统唯一入口。
 
@@ -118,8 +127,8 @@ AI 是加速器，不是系统唯一入口。
 ```text
 Bearer Token
   ↓
-GET /datasets/{id}/cis
-GET /datasets/{id}/relations
+GET /api/v1/datasets/{id}/cis
+GET /api/v1/datasets/{id}/relations
   ↓
 CMDB / 数据导入程序 / 测试脚本
 ```
@@ -151,11 +160,11 @@ kubernetes_node
 kubernetes_workload
 ```
 
-每种类型只提供一组开发测试真正需要的字段，例如：
+每种类型只提供开发测试真正需要的字段，例如：
 
 - 通用：`name`、`status`、`environment`、`owner`、`tags`；
 - 服务器：`hostname`、`serial_number`、`vendor`、`model`、`cpu`、`memory`、`management_ip`；
-- 虚拟机：`uuid`、`hostname`、`cpu`、`memory`、`ip`、`power_state`；
+- 虚拟机：`uuid`、`hostname`、`cpu`、`memory`、`ip_address`、`power_state`；
 - 网络设备：`hostname`、`serial_number`、`vendor`、`model`、`management_ip`；
 - 应用：`code`、`name`、`owner`、`environment`、`criticality`；
 - 数据库和中间件：`engine/type`、`version`、`host`、`port`、`environment`；
@@ -176,6 +185,18 @@ uses
 has_ip
 ```
 
+每条关系规则必须明确：
+
+```text
+strategy = balanced | random_seeded
+coverage = from | to
+```
+
+- `coverage=from`：每一个起点 CI 获得一条关系；
+- `coverage=to`：每一个终点 CI 获得一条关系。
+
+同一数据集内相同 `(关系类型, 起点, 终点)` 只允许一条边。
+
 ### 自定义类型
 
 自定义类型不属于核心 P0。只有不影响 MVP 进度时，才允许支持简单的 JSON 兼容字段定义；不得为此建设脚本、表达式语言或插件系统。
@@ -187,7 +208,7 @@ Issue #1 实现完成后，用户应当能够：
 1. 通过一条自然语言获得有效规格；
 2. 在无 AI 时从模板生成；
 3. 生成至少 10,000 条记录并通过分页查看；
-4. 获得关系完整、引用不悬空的数据；
+4. 获得关系完整、覆盖方向明确、引用不悬空且没有重复边的数据；
 5. 使用 Bearer Token 查询 CI 与关系；
 6. 按类型、关键字和分页读取；
 7. 下载 JSON、CSV，以及实现成本可控时的 XLSX；
@@ -210,7 +231,9 @@ MVP 不建设：
 - 完整身份系统、组织、租户和 RBAC；
 - 任意脚本或自定义代码执行；
 - 拖拽式拓扑建模；
-- 生产数字孪生。
+- 生产数字孪生；
+- 多轮聊天、聊天历史或会话管理；
+- 首版数据库自动迁移链。
 
 这些能力必须由真实使用证明价值后再单独立项。
 
@@ -220,12 +243,14 @@ MVP 不建设：
 - 默认使用 SQLite；
 - 使用一个环境变量 API Key；
 - AI Provider 采用 OpenAI-compatible 配置；
+- 创建页采用一次性提示词到结构化规格的交互；
 - UI 页面少、主路径短；
 - 代码优先可读和可改，不为未来假设提前抽象；
+- SQLite 首版使用 `PRAGMA user_version = 1` 标记模式版本，不兼容时明确提示备份和重建；
 - 完成 MVP 后先实际接入 CMDB 或 CMDB 测试程序，再决定下一步。
 
 ## 10. 当前路线
 
 - [Issue #1](https://github.com/john-ops-lab/InfraSourceLab/issues/1)：MVP 设计已整理，**尚未开始开发**；
-- [Issue #2](https://github.com/john-ops-lab/InfraSourceLab/issues/2)：可选增强设计，**必须等待 #1 真正实现和验证后再决定是否开发**；
+- [Issue #2](https://github.com/john-ops-lab/InfraSourceLab/issues/2)：仅包含简单拓扑、基础数据质量和 CMDB 使用示例，**必须等待 #1 真正实现和验证后再决定是否开发**；
 - Issues #3～#8：已关闭为“不计划实施”。
