@@ -2,7 +2,7 @@
 
 ## 1. Scenario 的定位
 
-Scenario 是 InfraSourceLab 的**版本化领域源码**，但不是普通用户必须手写的产品入口。
+Scenario 是 InfraSourceLab 的版本化领域源码，但不是普通用户必须手写的入口。
 
 ```text
 AI Create ────────┐
@@ -11,16 +11,15 @@ Expert YAML ──────┘          │
                              ├─ Validate
                              ├─ Estimate
                              └─ semantic_digest
-                             │
-                             ▼
+                             ↓
                          User Save
-                             ▼
+                             ↓
                      Immutable Revision
-                             ▼
+                             ↓
                            Compile
 ```
 
-YAML 是 canonical human-readable serialization / Expert representation；内部统一解析为 JSON-compatible typed model。
+YAML 是 canonical human-readable serialization / Expert representation；内部解析为 JSON-compatible typed model。
 
 ---
 
@@ -34,50 +33,37 @@ Normalized typed document
     Builder    AI Candidate
 ```
 
-Normalized typed document 是语义真值；Raw YAML 是人类可读原文与审计 artifact。
+Normalized typed document 是语义真值；Raw YAML 是人类可读原文与 provenance artifact。
 
-Builder round-trip 可以规范化 key order/quotes/whitespace/comments；除非以后明确引入 comment-preserving parser，**不承诺所有 YAML 注释/排版逐字符保留**。
-
-必须承诺：合法 advanced fields 不被 Builder 静默删除/改值。
+Builder 可以规范化 formatting/comments/key-order，不承诺逐字符 round-trip；必须承诺合法 advanced semantic fields 不被静默删除/改值。
 
 ---
 
 ## 3. Digest 模型
 
 ```text
-source_digest
-  = raw source/YAML text hash
-
-semantic_digest
-  = canonical normalized typed document hash
+source_digest   = raw source/YAML text hash
+semantic_digest = canonical normalized typed document hash
 ```
 
-用途：
+- source_digest：原文 provenance；
+- semantic_digest：AI base/stale、Builder/YAML semantic sync、Compile input identity。
 
-- `source_digest`：原文 provenance / exact source change；
-- `semantic_digest`：AI base/stale、Builder/YAML semantic sync、Compile input identity。
-
-Canonical serialization 必须 deterministic，并记录 schema/normalization version。
+Canonical serialization 必须 deterministic，并记录 schema/normalization version。非语义系统字段（如数据库 created_at）不进入 semantic digest。
 
 ---
 
 ## 4. AI Candidate Staleness
 
-Candidate 至少携带：
+Candidate：
 
 ```text
 base_semantic_digest
 candidate semantic document
-candidate semantic_digest
+candidate_semantic_digest
 ```
 
-Apply 前：
-
-```text
-candidate.base_semantic_digest == current semantic_digest
-```
-
-不相等时 M1 起禁止 blind Apply；M5 再增加 frozen snapshot / 3-way compare / rebase / richer Regenerate。
+Apply 前必须比较 current semantic digest；不一致时 M1 起禁止 blind Apply。M5 再增加 frozen snapshot / 3-way compare / rebase。
 
 ---
 
@@ -103,24 +89,22 @@ sources:
   # source projections + drivers
 
 timeline:
-  # run-scoped deterministic state changes
+  # run-scoped deterministic changes
 
 faults:
-  # run-scoped transport/application fault declarations
+  # run-scoped transport/application faults
 
 expectations:
   # optional verification hints
 ```
 
-版本策略：未知 `apiVersion` 不静默接受；migration 显式；Revision 保存 raw/normalized/source_digest/semantic_digest/schema version。
+Unknown `apiVersion` not silently accepted；schema migration explicit；Revision stores raw/normalized/source_digest/semantic_digest/schema+normalization version。
 
 ---
 
 ## 6. Builder Compatibility
 
-Builder 覆盖高频 80% 语义：Environment / Sources / Data Quality / 常用 Timeline/Fault。
-
-正确方式：
+Builder covers high-frequency 80% semantics and patches known typed paths：
 
 ```text
 parse → typed document
@@ -132,13 +116,11 @@ preserve untouched valid advanced fields
 validate/serialize
 ```
 
-不是重新生成一份只含 Builder 字段的 Scenario。
-
-有 advanced config 时 UI 必须提示。
+有 advanced config 时 UI 提示；Builder 不重建一份“只含自己认识字段”的 Scenario。
 
 ---
 
-## 7. World：描述真实世界，不描述接口
+## 7. World：领域语义，不描述接口
 
 ```yaml
 world:
@@ -148,14 +130,6 @@ world:
     - id: suzhou-dc
       name: Suzhou DC
 
-  racks:
-    generate:
-      count: 40
-      template:
-        id: rack-{index:03d}
-        siteRef:
-          choose: [shanghai-dc, suzhou-dc]
-
   physicalServers:
     generate:
       count: 300
@@ -164,18 +138,13 @@ world:
         hostname: srv-{index:04d}
         serial:
           pattern: CZ{index:08d}
-        cpu:
-          cores:
-            choose: [16, 24, 32, 48]
-        memoryGiB:
-          choose: [64, 128, 256]
         managementIp:
           allocateFrom: mgmt-pool
         rackRef:
           distributeOver: racks
 ```
 
-World 使用领域语义；SNMP `sysName.0`、Redfish `SerialNumber` 等属于 Source Projection，不属于 canonical World。
+SNMP `sysName.0`、Redfish `SerialNumber` 等属于 Source Projection，不属于 World。
 
 ---
 
@@ -186,38 +155,13 @@ TruthNode(id, kind, attributes, tags)
 TruthEdge(id, type, from, to, attributes)
 ```
 
-Example：
-
-```json
-{
-  "id": "server-0001",
-  "kind": "physical_server",
-  "attributes": {
-    "hostname": "srv-0001",
-    "serial": "CZ00000001",
-    "management_ip": "10.20.0.10"
-  }
-}
-```
-
-```json
-{
-  "id": "edge:server-0001:rack-001",
-  "type": "mounted_in",
-  "from": "server-0001",
-  "to": "rack-001"
-}
-```
-
-Scenario 可有强类型 convenience sections，Compiler 最终降为通用 graph。
+Scenario 可提供 strong-typed convenience sections；Compiler 最终降为 graph。
 
 ---
 
 ## 9. Compile Base Truth 与 Run Truth
 
-**这是 Timeline 语义的重要边界。**
-
-Compile 某个 immutable Revision 时产生：
+Compile immutable Revision：
 
 ```text
 Compile C12
@@ -226,9 +170,7 @@ Base Source Projections
 Compile Manifest
 ```
 
-它们是 immutable compile provenance。
-
-每次 Start Run 后，Run 从 Base V0 开始独立 evolution：
+每次 Start Run 后独立 evolution：
 
 ```text
 Compile C12 / Base V0
@@ -238,39 +180,21 @@ Run A                     Run B
 V0 → V1 → V2              V0 → V1
 ```
 
-规则：
+- Timeline modifies target Run only；
+- Run A not affect B；
+- Run not mutate Compile Base；
+- Source freshness/faults run-scoped；
+- historical Run Truth Version can be verification baseline。
 
-- Timeline action 修改目标 Run 的 canonical Truth；
-- Run A 不修改 Run B；
-- Run 不修改 Compile Base V0；
-- Source refresh/freeze/staleness 也是 run-scoped；
-- historical Run Truth Version 可被 Verification 引用。
-
-Scenario `timeline` 描述**每个 Run 可以执行/重放的变化计划**，不是编译时直接把 Base Truth 改掉。
+Scenario `timeline` 描述每个 Run 可执行/重放的计划，不在 Compile 阶段直接修改 Base V0。
 
 ---
 
 ## 10. Stable ID / Seed
 
-生成 ID：
+Generated identity from scenario namespace + resource path + deterministic index。必要 UUID 用 UUIDv5/deterministic hash。
 
-```text
-scenario namespace + resource path + deterministic index
-```
-
-必要 UUID 用 UUIDv5/deterministic hash，不用 `uuid4()` 作为 canonical generated identity。
-
-`seed` 只在同算法/依赖版本下保证伪随机稳定，所以 Compile Manifest 记录：
-
-```text
-schemaVersion
-normalizationVersion
-compilerVersion
-generatorVersions
-semanticDigest
-```
-
-AI 可以非确定，但保存 Revision 以后 Compile/Runtime 输入确定。
+Compile Manifest records schema/normalization/compiler/generator versions + semantic digest。AI 可以非确定，但保存 Revision 后 deterministic boundary 生效。
 
 ---
 
@@ -281,11 +205,10 @@ world:
   addressPools:
     mgmt-pool:
       cidr: 10.20.0.0/20
-      reserved:
-        - 10.20.0.1
+      reserved: [10.20.0.1]
 ```
 
-Compiler 检查 overlap/capacity/duplicate/reserved/IP format；Driver 不随机决定 canonical IP。
+Compiler checks overlap/capacity/duplicates/reserved/format；Driver 不自行随机 canonical IP。
 
 ---
 
@@ -303,21 +226,9 @@ sources:
       fields:
         SerialNumber: "attributes.serial"
         HostName: "attributes.hostname"
-
-  - name: legacy-assets
-    driver: artifact.csv
-    select:
-      kinds: [physical_server]
-    projection:
-      fields:
-        asset_name: "upper(attributes.hostname)"
-        serial_no: "lower(attributes.serial)"
-        ip: "attributes.management_ip"
 ```
 
-第一版 pure transforms：map/rename、case、prefix/suffix/format、omit、constant、enum map、split/join、deterministic hash、relation flatten/reference。
-
-无 arbitrary Python/JS/Jinja。
+Pure transforms：map/rename、case、prefix/suffix/format、omit、constant、enum map、split/join、deterministic hash、relation flatten/reference。No arbitrary Python/JS/Jinja。
 
 ---
 
@@ -338,9 +249,9 @@ extra-relation
 orphan-record
 ```
 
-Selector `percentage` 使用 `(seed,node_id,defect_id)` deterministic hash。
+Percentage selector uses deterministic hash `(seed,node_id,defect_id)`。
 
-Compile 产生 Base Projection definition；Run 具体 Source Projection Version 在 M2 可随着 Truth/freshness 演化。
+Compile creates Base Projection definition；Run Source Projection Version may evolve from Truth/freshness in M2。
 
 ---
 
@@ -350,26 +261,33 @@ Compile 产生 Base Projection definition；Run 具体 Source Projection Version
 sources:
   - name: vc-a
     driver: vcsim
-    projection: {...}
     driverConfig:
       apiMode: vcenter
       tls: true
 ```
 
-Driver-specific config 放 `driverConfig`，由具体 Driver 二次 schema/capability validation。
-
-普通 UI 优先 capability-aware controls，raw config 属于 Advanced/Expert。
+Driver-specific config gets second schema/capability validation。普通 UI uses capability-aware controls；raw config Advanced/Expert。
 
 ---
 
-## 15. Clock / Timeline
+## 15. Transport / Protocol metadata
 
-MVP：
+Source/Driver capability must be able to express actual transport/protocol, e.g.：
 
-```yaml
-clock:
-  mode: manual
+```text
+HTTP API → TCP
+PostgreSQL → TCP
+SSH/SFTP → TCP
+SNMP v2c default → UDP
 ```
+
+Fault availability = Source transport + Driver capability + FaultBackend capability。Toxiproxy is TCP-only; default SNMP/UDP must not falsely inherit TCP faults。
+
+---
+
+## 16. Clock / Timeline
+
+MVP manual clock：
 
 ```yaml
 timeline:
@@ -382,21 +300,11 @@ timeline:
         to: esxi-02
 ```
 
-Run 执行：
-
-```text
-Run V0 (derived from Compile Base V0)
-  ↓ step migrate
-Run V1
-  ↓ source refresh policy
-Run Source Projection Version updates
-```
-
-另一个 Run 不受影响。
+Run execution：Run V0 → Step → Run V1 → Source refresh policy。
 
 ---
 
-## 16. Source Refresh / Staleness
+## 17. Source Refresh / Staleness
 
 ```yaml
 sources:
@@ -406,23 +314,13 @@ sources:
       steps: 3
 ```
 
-运行时记录：
-
-```text
-run_id
-current canonical truth version
-source projected truth version
-runtime projection version
-stale_by_steps
-```
-
-同一个 Source definition 在两个 Run 可以有不同 freshness。
+Runtime records run_id, current canonical version, source projected version, runtime projection version, stale_by_steps。Same Source definition can have different freshness in Run A/B。
 
 ---
 
-## 17. Faults 与 Defects 分离
+## 18. Faults vs Defects
 
-Semantic Defect 改数据内容；Transport Fault 改连接；Protocol/Application Fault 改协议行为。
+Semantic Defect changes data；Transport Fault changes transport；Protocol/Application Fault changes protocol behavior。
 
 ```yaml
 faults:
@@ -434,13 +332,15 @@ faults:
       latencyMs: 1500
 ```
 
-Fault 实际 capability 以项目 pin 的 backend 版本 + integration test 为准。Run A fault 不影响 Run B。
+Fault capability must match actual transport/backend/pin version. UDP network fault is unavailable until a dedicated backend is explicitly implemented。
 
 ---
 
-## 18. Compile Manifest
+## 19. Compile Manifest — deterministic, no Run ephemera
 
-Authoritative Compile 只基于 immutable Revision：
+Authoritative Compile only from immutable Revision。
+
+Example logical contents：
 
 ```yaml
 scenarioRevision: 12
@@ -461,60 +361,77 @@ sources:
     driverVersion: ...
     backendVersion: ...
     projectionDigest: sha256:...
+    planDigest: sha256:...
 generators:
   mimesis: ...
 ```
 
-Run Manifest/Run state 再引用这个 Compile Manifest 并维护 runtime truth/projection versions。
-
----
-
-## 19. Diagnostics
-
-```json
-{
-  "severity": "error|warning|info",
-  "code": "scenario.ip_pool_exhausted",
-  "path": "world.physicalServers.generate",
-  "message": "...",
-  "hint": "..."
-}
-```
-
-Error 禁止 authoritative Compile/Start。
-
-典型：invalid schema、duplicate ID、broken ref、impossible relation、IP exhausted、driver unavailable、capability mismatch、invalid projection/timeline、resource limit。
-
----
-
-## 20. Scale
-
-大规模依赖 generate/count/templates/distribution/deterministic allocator/batch persistence/streaming artifacts，不写 100k 对象 YAML。
-
-Unsaved Authoring Estimate 可先给：
+### Compile Manifest MUST NOT contain
 
 ```text
-nodes ~101,200
-edges ~280,000
-containers 6
-memory ~2.4 GiB
-artifact ~180 MiB
+run_id
+host published port
+container/network/volume ID/name
+per-Run random credential/token/community/key
+runtime endpoint
+runtime-only native IDs generated after start
+active runtime faults
+current Run Truth Version
 ```
 
-Estimate 不是 authoritative Compile。
-
-Run Truth Version 实现可以 snapshot+delta/materialize，避免每步完整复制 100k graph，但领域语义必须可查询历史版本且 Run 隔离。
+Deterministic artifact/Driver Plan may include internal service-port requirements and content-addressed config templates, but no runtime secret/state。
 
 ---
 
-## 21. `v1alpha1` 暂不支持
+## 20. Run Manifest / RunSource materialization
+
+Run starts from Compile plan and records per-Run ephemera：
+
+```text
+run_id
+Agent assignment
+container/network/volume names/IDs
+host published ports
+runtime endpoint
+per-Run generated credential / secret reference
+runtime native IDs / identity map
+current Truth Version
+current Source Projection Version
+active faults
+health/status
+```
+
+Same Compile can therefore create multiple isolated Runs without port/credential collisions or changing Compile digest。
+
+Runtime secrets are not dumped into ordinary user-visible manifest/logs。
+
+---
+
+## 21. Diagnostics
+
+Unified error/warning/info with code/path/message/hint。Errors block authoritative Compile/Start。
+
+Typical：invalid schema、unsafe YAML/input limits、duplicate ID、broken ref、impossible relation、IP exhausted、driver unavailable、transport/fault mismatch、resource limit。
+
+---
+
+## 22. Scale
+
+Use generate/count/templates/distributions/deterministic allocator/batch persistence/streaming artifacts。Authoring Estimate works before save/Compile。
+
+Run Truth can use snapshot+delta/materialization to avoid full 100k copy each Step while preserving historical version/query semantics and Run isolation。
+
+---
+
+## 23. `v1alpha1` 暂不支持
 
 - arbitrary Python/JS/Jinja；
 - arbitrary Docker image；
-- source request-time LLM；
+- request-time LLM Source responses；
 - arbitrary DAG/workflow；
 - distributed Truth Graph；
 - graph query language；
-- 保证 Builder 保留所有 YAML comments/formatting。
+- guaranteed comment/format preservation；
+- implicit UDP privileged network-fault backend。
 
-优先保证可审计、确定、安全、Run 隔离。
+优先可审计、确定、安全、Run isolated。
