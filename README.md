@@ -1,287 +1,228 @@
 # InfraSourceLab
 
-> **Build a reproducible IT infrastructure world, expose it through realistic data sources, and verify what downstream systems actually collected.**
->
-> 构造一个可重复的 IT 基础设施世界，通过真实协议、模拟器或轻量服务对外暴露，并验证 DLR、CMDB 等下游系统最终采集到了什么。
+> **用自然语言快速生成有关系的 CMDB 配置数据，并通过带认证的 REST API 提供给 DLR、CMDB 或其他测试程序。**
 
-InfraSourceLab（ISL）是一个面向 **CMDB / ITOM / 数据采集与集成测试** 的基础设施数据源实验室。
+InfraSourceLab（ISL）是一个本地优先、单用户的 **AI CMDB 数据生成工具**。
 
-它不是随机 JSON 生成器，也不准备重新实现 vCenter、Kubernetes、SNMP、Redfish、数据库、消息队列等成熟协议。核心职责是：
+它解决的核心问题很简单：个人开发 DLR 或 CMDB 时，没有真实企业测试环境，也很难准备大量合理的服务器、虚拟机、网络设备、应用、数据库、Kubernetes 等配置项及关系数据。
 
-1. 用 Scenario 描述一个完整、可重复的 IT 世界；
-2. 编译出统一的 **Truth Graph**；
-3. 把同一世界投影成多个数据源各自“看见”的数据；
-4. 编排成熟模拟器或真实轻量服务暴露这些数据；
-5. 注入脏数据、延迟、故障、漂移和生命周期变化；
-6. 接收 DLR / CMDB 的采集结果，并与 Ground Truth 自动对比。
-
-项目当前处于 **设计与早期开发阶段**。代码实现从 [M0 Issue #1](https://github.com/john-ops-lab/InfraSourceLab/issues/1) 开始。
-
----
-
-## 产品体验：AI-first，不要求普通用户手写 YAML
-
-Scenario YAML 是底层可读、可版本化资产，不是默认交互入口。
+InfraSourceLab 的最短路径是：
 
 ```text
-A. AI Create / Describe Lab      ← 默认入口
-B. Visual Scenario Builder       ← 可视化精调
-C. YAML Expert Mode              ← Monaco 专家模式
-               ↓
-        Scenario Working Copy
-               ↓
- Validate / Estimate / Preview   ← 未保存也可以
-               ↓
-          Save Revision
-               ↓
-      Authoritative Compile
-               ↓
-           Start Run
+自然语言描述
+   ↓
+AI 生成小型 GenerationSpec
+   ↓
+Python 按 seed 确定性生成 CI 与关系
+   ↓
+数据预览
+   ↓
+Bearer Token REST API
+   ├─ DLR 采集
+   ├─ CMDB 导入
+   └─ JSON / CSV / XLSX 导出
 ```
 
-例如用户可以直接描述：
+AI 只负责理解需求并生成结构化规格，不负责逐条生成上万条记录，也不会在每次 API 请求时调用大模型。
 
-> 模拟一家中型企业，上海和苏州两个数据中心，400 台物理机、1500 台 VM、3 个 Kubernetes 集群、200 个应用。数据来自 vCenter、SNMP、Redfish 和 Excel，其中 Excel 比真实状态晚一个版本，并制造少量 IP/hostname 冲突。
+---
 
-平台先返回结构化场景摘要、数据源、数据质量设置和资源估算；用户可以直接 Apply、进入 Visual Builder 精调，或查看 Expert YAML。
+## MVP 能做什么
 
-**普通用户不需要阅读 YAML 才能完成核心流程。**
+用户可以输入：
 
-### 不保存也能预览，但不能直接运行
+> 生成一家中型企业的配置数据：2 个数据中心、30 个机柜、200 台物理服务器、800 台虚拟机、80 个应用、20 个数据库和 2 个 Kubernetes 集群，并建立运行、包含、依赖和 IP 关系。
+
+系统返回一个可确认的结构化规格，随后本地生成：
+
+- 配置项记录；
+- 配置项关系；
+- 各类型数量统计；
+- 可分页、筛选、搜索的 REST API；
+- JSON、CSV、XLSX 导出。
+
+首批内置 CI 类型：
 
 ```text
-Unsaved Working Copy
-  ├─ Validate ✓
-  ├─ Estimate ✓
-  └─ AI Candidate ✓
-
-Immutable Revision
-  └─ Authoritative Compile ✓
-
-Successful Compile Manifest
-  └─ Start Run ✓
+data_center
+rack
+physical_server
+virtual_machine
+network_device
+ip_address
+application
+database
+middleware
+kubernetes_cluster
+kubernetes_node
+kubernetes_workload
 ```
 
-这样既保证 AI/Builder 易用，又保持运行可审计、可复现。
-
----
-
-## 核心模型
+首批关系类型：
 
 ```text
-Natural Language / Visual Builder / Expert YAML
-                    │
-                    ▼
-             Scenario Working Copy
-                    │
-             Validate / Estimate
-                    │
-                    ▼
-             Immutable Revision
-                    │
-                    ▼
-             Scenario Compiler
-                    │
-                    ▼
-                Truth Graph
-                    │
-            ┌───────┼────────┐
-            ▼       ▼        ▼
-        Source A Source B Source C
-            │       │        │
-            ▼       ▼        ▼
-    Simulator / Real Service / Contract Mock
-                    │
-                    ▼
-              DLR / CMDB / Client
-                    │
-                    ▼
-              Observation API
-                    │
-                    ▼
-                 Verifier
-                    │
-                    ▼
-          Expected vs Actual Report
+contains
+mounted_in
+runs_on
+hosted_on
+belongs_to
+depends_on
+uses
+has_ip
 ```
 
-AI 负责帮助**编写 Scenario**，不在每次数据请求到来时临时生成随机响应。保存 Revision 后，编译和运行必须尽量确定、可复现、可自动测试。
-
 ---
 
-## 不重复造轮子
+## 产品界面
 
-InfraSourceLab 使用“统一控制层 + Driver”复用成熟生态：
-
-| 场景 | 优先方案 |
-|---|---|
-| vCenter / ESXi | govmomi `vcsim` |
-| Kubernetes | Kubernetes SIG `KWOK` |
-| SNMP | `snmpsim` |
-| Redfish / BMC | DMTF Redfish Interface Emulator |
-| 网络设备 CLI / SSH | `FakeNOS`；录制回放 `scrapli-replay` |
-| AWS API | `Moto` |
-| Azure Storage | `Azurite` |
-| Google Cloud Storage | `fake-gcs-server` |
-| NETCONF / YANG | `Netopeer2 + sysrepo` |
-| 通用 REST | `Mockoon CLI` |
-| OpenAPI contract | `Prism` |
-| HTTP 录制回放 | `Hoverfly` |
-| PostgreSQL / MySQL / Redis / Kafka / MQTT / SFTP / LDAP | **直接启动真实轻量服务并灌入场景数据** |
-| NetBox | 真实 NetBox + Truth seed |
-| 网络故障 | `Toxiproxy`，以项目实际 pin 版本能力为准 |
-| 高保真网络 | 后期 `containerlab` / GNS3 + 用户合法镜像 |
-
-完整工具调研见 [`docs/research/tool-landscape.md`](docs/research/tool-landscape.md)，正式阶段与 backend 选择见 [`docs/backend-strategy.md`](docs/backend-strategy.md)，CMDB 数据源 Gap 见 [`docs/research/cmdb-source-coverage.md`](docs/research/cmdb-source-coverage.md)。
-
-### Fidelity Ladder
-
-- **L0 — Artifact**：JSON / YAML / CSV / xlsx；
-- **L1 — Contract Mock / Replay**；
-- **L2 — Protocol Emulator**；
-- **L3 — Real Service**；
-- **L4 — User-provided High Fidelity Lab**。
-
-原则：**已有成熟模拟器就编排它；真实服务很轻就直接跑真的；最后才考虑自研薄协议层。**
-
----
-
-## 与 DataLinkRuntime 的关系
+界面保持简单：
 
 ```text
-InfraSourceLab  →  DataLinkRuntime  →  CMDB / other targets
-   Source Lab       Adapter Runtime      Consumer
+Create
+Datasets
+Dataset Detail
+  ├─ Overview
+  ├─ CI Data
+  ├─ Relations
+  └─ API & Export
+Settings / API usage
 ```
 
-DLR 是重要下游验证对象，但**不再作为 InfraSourceLab 的前端视觉、组件或布局基线**。
+普通用户不需要写 YAML，也不需要面对 Monaco、复杂 DSL、容器编排或协议模拟器。
+
+前端使用：
+
+- UI Skills：设计工程方法；
+- shadcn/ui + Tailwind CSS：产品组件和视觉体系；
+- assistant-ui：自然语言创建体验；
+- Chrome DevTools MCP：真实浏览器检查；
+- Playwright：关键路径回归。
+
+简单拓扑图是第二阶段可选增强，不阻塞 MVP。
 
 ---
 
-## 前端设计工程基线
+## 带认证的 REST API
 
-正式采用：
+MVP 使用一个环境变量配置的 API Key：
 
-- **UI Skills** — `ibelick/ui-skills`：设计工程方法与 Agent skills；
-- **shadcn/ui** — `shadcn-ui/ui`：主要 UI 组件与设计系统；
-- **assistant-ui** — `assistant-ui/assistant-ui`：AI 对话 / Tool UI / Generative UI；
-- **Chrome DevTools MCP** — `ChromeDevTools/chrome-devtools-mcp`：真实 Chrome 点击、截图、Console/Network、性能与响应式检查。
+```bash
+ISL_API_KEY=replace-with-a-strong-local-key
+```
 
-运行时：
+数据接口使用：
+
+```http
+Authorization: Bearer <ISL_API_KEY>
+```
+
+核心接口计划：
 
 ```text
-React 19 + TypeScript + Vite 7
+GET    /api/v1/datasets
+POST   /api/v1/datasets/generate
+GET    /api/v1/datasets/{id}
+DELETE /api/v1/datasets/{id}
+
+GET /api/v1/datasets/{id}/cis
+GET /api/v1/datasets/{id}/cis/{ci_id}
+GET /api/v1/datasets/{id}/relations
+GET /api/v1/datasets/{id}/summary
+GET /api/v1/datasets/{id}/export?format=json|csv|xlsx
+```
+
+示例：
+
+```bash
+curl -H "Authorization: Bearer $ISL_API_KEY" \
+  "http://127.0.0.1:8080/api/v1/datasets/<dataset-id>/cis?type=virtual_machine&page=1&page_size=100"
+```
+
+这已经足够让 DLR 开发一个标准 HTTP Adapter，也足够让未来 CMDB 做批量导入和关系验证。
+
+---
+
+## 技术架构
+
+MVP 是一个单体应用：
+
+```text
+React Web
+   ↓
+FastAPI
+   ├─ AI: natural language → GenerationSpec
+   ├─ deterministic data generator
+   ├─ authenticated REST API
+   ├─ export
+   └─ SQLite
+```
+
+推荐技术栈：
+
+```text
+Python 3.13
+FastAPI + Pydantic + SQLAlchemy
+SQLite default
+Mimesis and/or Faker
+React + TypeScript + Vite
 Tailwind CSS v4 + shadcn/ui
 assistant-ui
-Monaco (Expert YAML only)
 i18next
-Vitest + Testing Library
-Playwright
+pytest + Vitest + Playwright
 ```
 
-明确不使用：
-
-```text
-Ant Design
-Ant Design Pro Components
-DLR Design System / CSS / Shell
-```
-
-详见：
-
-- [`docs/frontend-design.md`](docs/frontend-design.md)
-- [`docs/qoder-frontend-tooling.md`](docs/qoder-frontend-tooling.md)
+正常使用目标是：一个 Docker 镜像、一个 Compose service、一个数据卷、一个启动命令。
 
 ---
 
-## AI 安全与一致性边界
+## 明确不做
 
-```text
-Prompt + current Working Copy + capabilities
-        ↓
-Scenario Candidate
-        ↓
-Schema / Semantic / Capability / Resource Validation
-        ↓
-Structured Summary / Visual Preview / optional YAML Diff
-        ↓
-User Apply
-        ↓
-Working Copy
-        ↓
-User Save Revision
-        ↓
-User Compile
-        ↓
-User Start
-```
+MVP 不建设：
 
-AI 不自动：
+- vCenter、SNMP、Kubernetes、Redfish 等协议模拟器；
+- PostgreSQL、Kafka、Redis、NetBox 等真实服务编排；
+- Lab Agent 或 Docker socket 管理；
+- Compile/Run/Truth-Version 平台；
+- Timeline、Fault、Toxiproxy；
+- Observation、Verifier；
+- Remote Agent、GC、分布式调度；
+- 通用 Importer/Plugin 平台；
+- 多租户、RBAC、SSO；
+- 图数据库；
+- 生产级数字孪生。
 
-- Save Revision；
-- authoritative Compile；
-- Start / Stop / Delete Run；
-- Step Timeline；
-- Enable destructive Fault；
-- Install Driver / pull arbitrary image；
-- 执行 shell/Docker；
-- 读取 secret。
-
-AI Candidate 使用 **semantic digest** 做 base/stale 判断；当前 Working Copy 已变化时不能 blind Apply。完整模型见 [`docs/scenario-model.md`](docs/scenario-model.md)。
-
-AI Provider 未配置时，Builder / Expert YAML / validate / estimate / compile / run 仍应可正常使用。
+这些能力只有在 MVP 实际使用后出现明确需求时，才按单个问题重新评估。
 
 ---
 
-## 开发路线与 Issues
+## 开发路线
 
-当前采用“大 Wave + Qoder Go Mode + direct main + 阶段外部 Review”。
+当前只保留两个活跃 Issue：
 
-| Wave | Issue | 目标 |
+| 阶段 | Issue | 目标 |
 |---|---|---|
-| M0 | [#1](https://github.com/john-ops-lab/InfraSourceLab/issues/1) | 工程骨架、新前端设计系统、Visual Builder、Control/Lab Agent 分离 |
-| M1 | [#2](https://github.com/john-ops-lab/InfraSourceLab/issues/2) | Scenario Compiler、Truth Graph、Projection、首批 Sources、基础 AI authoring |
-| M2 | [#3](https://github.com/john-ops-lab/InfraSourceLab/issues/3) | Timeline、Toxiproxy、Observation、Verifier |
-| M3 | [#4](https://github.com/john-ops-lab/InfraSourceLab/issues/4) | vcsim、KWOK、snmpsim、Redfish、FakeNOS |
-| M4A | [#5](https://github.com/john-ops-lab/InfraSourceLab/issues/5) | Moto、Azurite、GCS、NETCONF、libvirt |
-| M4B | [#6](https://github.com/john-ops-lab/InfraSourceLab/issues/6) | DB/cache/MQ/SFTP/LDAP、NetBox、record/replay/Prism |
-| M5 | [#7](https://github.com/john-ops-lab/InfraSourceLab/issues/7) | 高级 AI：Imports、Attachments、Tools、Context、Regenerate |
-| M6 | [#8](https://github.com/john-ops-lab/InfraSourceLab/issues/8) | 100k scale、Remote Agent、Recovery/GC、Release hardening |
+| MVP | [#1](https://github.com/john-ops-lab/InfraSourceLab/issues/1) | AI 生成规格、确定性 CI/关系、Bearer API、导出、简单 UI |
+| 可选增强 | [#2](https://github.com/john-ops-lab/InfraSourceLab/issues/2) | 简单拓扑图和少量数据质量开关 |
 
-大 Wave 在 `main` 上串行实现。详细规则见 [`docs/development-workflow.md`](docs/development-workflow.md)。
+原来的协议模拟、故障验证、远程 Agent 和平台化 Issues 已关闭为 `not planned`。
 
 ---
 
 ## 文档
 
 - [产品定义](docs/product.md)
-- [总体架构](docs/architecture.md)
-- [前端产品与设计工程方案](docs/frontend-design.md)
-- [Qoder 前端设计与真实浏览器工具链](docs/qoder-frontend-tooling.md)
-- [Scenario 与 Truth Graph 模型](docs/scenario-model.md)
-- [模拟器与数据源后端策略](docs/backend-strategy.md)
-- [工具全景调研](docs/research/tool-landscape.md)
-- [CMDB 数据源覆盖与 Gap Map](docs/research/cmdb-source-coverage.md)
-- [重点项目源码拆解](docs/research/source-deep-dive.md)
-- [故障、时间与自动验证设计](docs/verification-and-faults.md)
-- [安全与许可证边界](docs/security-and-licensing.md)
-- [Qoder Go Mode + direct-main 开发与 Review](docs/development-workflow.md)
-- [开发路线图](docs/roadmap.md)
+- [精简架构](docs/architecture.md)
+- [GenerationSpec 与数据模型](docs/scenario-model.md)
+- [生成与接口策略](docs/backend-strategy.md)
+- [前端设计](docs/frontend-design.md)
+- [安全与许可证](docs/security-and-licensing.md)
+- [Qoder direct-main 开发与 Review](docs/development-workflow.md)
+- [精简路线图](docs/roadmap.md)
 
----
-
-## 当前边界
-
-第一阶段优先解决 **DLR 和后续 CMDB 的开发/集成测试**。当前不做：
-
-- 通用网络仿真平台；
-- 通用服务虚拟化平台；
-- 生产级数字孪生平台；
-- 面向不可信多租户的任意容器/代码执行平台；
-- 所有厂商私有协议的重新实现；
-- 运行时依赖某个 Coding Agent/会员。
+`docs/research/` 保留早期工具调研，仅作未来参考，不是 MVP 实现要求。
 
 ---
 
 ## License
 
-InfraSourceLab 使用 **Apache License 2.0**，见根目录 [`LICENSE`](LICENSE)。第三方模拟器、服务、库与容器遵循各自许可证与再分发条件；详细边界见 [`docs/security-and-licensing.md`](docs/security-and-licensing.md)。
+InfraSourceLab 使用 [Apache License 2.0](LICENSE)。
