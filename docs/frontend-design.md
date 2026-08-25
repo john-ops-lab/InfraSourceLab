@@ -17,19 +17,43 @@
 
 不要把简单工具做成复杂运维平台、数据治理后台或低代码编辑器。
 
-## 2. 设计方法与组件组合
+## 2. 必须使用的设计与组件组合
 
-计划使用：
+Issue #1 以及后续前端功能必须实际使用以下四项工具或项目：
+
+1. **UI Skills**  
+   https://github.com/ibelick/ui-skills
+
+   用于编码前确认页面主任务、信息层级、组件排布、尺寸、状态和响应式策略。不能先堆出页面，再把 UI Skills 作为形式化说明补到报告中。
+
+2. **shadcn/ui**  
+   https://github.com/shadcn-ui/ui
+
+   作为组件和视觉体系的首选基础，并与 Tailwind CSS v4 配合使用。常见控件必须先查询和复用 shadcn/ui，再考虑自定义基础组件。
+
+3. **Chrome DevTools MCP**  
+   https://github.com/ChromeDevTools/chrome-devtools-mcp
+
+   用于让 Codex、Claude 或其他兼容代理直接操作真实 Chrome，完成点击、输入、截图、Console、Network、性能和响应式检查。该步骤是前端验收门槛，不能被构建结果或 Playwright 替代。
+
+4. **assistant-ui**  
+   https://github.com/assistant-ui/assistant-ui
+
+   用于创建页中的自然语言输入、用户和助手消息、加载、取消、错误、重试以及结构化 `GenerationSpec` 建议。不得重新手写一套同类通用聊天界面。
+
+完整分工：
 
 ```text
-UI Skills             → 页面层级和交互方法
-shadcn/ui + Tailwind  → 基础组件和视觉体系
+UI Skills             → 页面层级、布局、尺寸、状态与交互方法
+shadcn/ui + Tailwind  → 基础组件和统一视觉体系
 assistant-ui          → 创建页自然语言交互
-Chrome DevTools MCP   → 真实浏览器检查
-Playwright            → 核心路径回归
+Chrome DevTools MCP   → 真实 Chrome 操作与调试验收
+Playwright            → 核心路径自动化回归
 ```
 
-运行时建议：
+Playwright 和 Chrome DevTools MCP 缺一不可：前者负责稳定回归，后者负责真实浏览器探索、调试和视觉验收。
+
+运行时计划：
 
 ```text
 React + TypeScript + Vite
@@ -310,9 +334,9 @@ AI 输出必须经过后端 `GenerationSpec` 校验。
 - 不引入图数据库；
 - 不承诺一次渲染 10,000 个节点。
 
-## 12. 浏览器验收定义
+## 12. Chrome DevTools MCP 浏览器验收定义
 
-Issue #1 实现后，必须真实检查：
+Issue #1 实现后，必须通过 Chrome DevTools MCP 在真实 Chrome 中检查：
 
 ```text
 录入 API Key
@@ -329,8 +353,10 @@ Issue #1 实现后，必须真实检查：
 检查范围：
 
 - 1024、1280、1440、1920 像素宽度；
+- 页面截图；
 - Console；
 - Network；
+- 性能；
 - 加载、错误和空状态；
 - AI 未配置；
 - 错误 API Key 返回 401；
@@ -338,7 +364,7 @@ Issue #1 实现后，必须真实检查：
 - 万级数据分页；
 - 键盘与焦点行为。
 
-通过构建不等于真实页面验收。
+通过构建、单元测试或 Playwright 不等于真实页面验收。若主开发工具无法调用 Chrome DevTools MCP，必须由能够调用它的兼容代理完成该门槛。
 
 ## 13. 前端停止规则
 
