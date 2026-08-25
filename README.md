@@ -20,20 +20,18 @@
 ├─ Dockerfile / docker-compose.yml
 ├─ 自动化测试
 ├─ GitHub Actions
-└─ 可运行版本或 Release
+└─ 可运行版本或发布版本
 ```
 
-因此，本文和 `docs/` 中描述的功能均为**目标设计**，不是已经实现的能力。任何“#1/#2 已开发完成、测试通过、可以 Review”的历史表述均不代表 GitHub 当前事实。
+因此，本文和 `docs/` 中描述的功能均为**目标设计**，不是已经实现的能力。任何“#1/#2 已开发完成、测试通过、可以进行代码审查”的历史表述均不代表 GitHub 当前事实。
 
 当前工作项：
 
 - [Issue #1](https://github.com/john-ops-lab/InfraSourceLab/issues/1)：**MVP 设计完成，尚未开始实现**；
 - [Issue #2](https://github.com/john-ops-lab/InfraSourceLab/issues/2)：**可选增强设计，必须等待 #1 真正实现并验证后再决定是否开发**；
-- Issues #3～#8：已关闭为 `not planned`，不属于当前开发范围。
+- Issues #3～#8：已关闭为“不计划实施”，不属于当前开发范围。
 
 权威状态说明见 [`docs/status.md`](docs/status.md)。
-
----
 
 ## 计划解决的问题
 
@@ -58,25 +56,21 @@ Bearer Token REST API
 
 AI 只负责把自然语言转换成结构化规格，不逐条生成上万条数据，也不在每次 API 请求时调用模型。
 
----
-
 ## MVP 计划范围
 
 计划包含：
 
 - 常用 CMDB CI 类型和关系；
-- 相同 `GenerationSpec + seed + generator version` 产生相同结果；
+- 相同 `GenerationSpec + seed + 生成器版本` 产生相同结果；
 - SQLite 本地持久化；
 - 一个环境变量配置的 Bearer Token；
 - 分页、筛选、搜索的 REST API；
 - JSON、CSV，以及低成本情况下的 XLSX 导出；
-- 简单的 Create、Datasets、Dataset Detail、API 使用界面；
-- OpenAI-compatible AI Provider，同时保留无 AI 模板入口；
+- 简单的创建、数据集、数据集详情、API 使用界面；
+- OpenAI 兼容的 AI 服务提供方，同时保留无 AI 模板入口；
 - 单应用、单 Docker 服务的本地运行方式。
 
 Issue #2 中的简单拓扑和少量脏数据开关不是 #1 的前置条件。
-
----
 
 ## 明确不做
 
@@ -85,14 +79,12 @@ Issue #2 中的简单拓扑和少量脏数据开关不是 #1 的前置条件。
 - vCenter、SNMP、Kubernetes、Redfish 等协议模拟器；
 - PostgreSQL、Kafka、Redis、NetBox 等真实服务编排；
 - Lab Agent、Docker socket 管理、远程 Agent；
-- Timeline、Fault、Toxiproxy、Observation、Verifier；
+- 时间线、故障注入、Toxiproxy、观察和验证平台；
 - 多租户、RBAC、SSO；
 - 图数据库或生产数字孪生；
-- 通用插件、Importer 或规则引擎平台。
+- 通用插件、导入器或规则引擎平台。
 
-只有实际使用证明通用 REST/文件接口不足时，才针对一个具体缺口单独立项。
-
----
+只有实际使用证明通用 REST 或文件接口不足时，才针对一个具体缺口单独立项。
 
 ## 设计文档
 
@@ -103,11 +95,11 @@ Issue #2 中的简单拓扑和少量脏数据开关不是 #1 的前置条件。
 - [生成与接口策略](docs/backend-strategy.md)
 - [前端设计](docs/frontend-design.md)
 - [安全与许可证](docs/security-and-licensing.md)
-- [开发与 Review 流程](docs/development-workflow.md)
+- [开发与代码审查流程](docs/development-workflow.md)
 - [精简路线图](docs/roadmap.md)
 
 `docs/research/` 是早期工具调研，只用于未来选型参考，不是当前实现清单。
 
-## License
+## 许可证
 
 InfraSourceLab 使用 [Apache License 2.0](LICENSE)。
