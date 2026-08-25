@@ -1,14 +1,18 @@
 # 安全与许可证边界
 
+> **状态：设计阶段，尚未实现。**
+>
+> 本文定义 MVP 需要覆盖的真实风险，不代表认证、限制、日志、导出安全或依赖扫描已经完成。
+
 ## 1. 威胁模型
 
-InfraSourceLab MVP 是：
+InfraSourceLab MVP 计划用于：
 
 - 本地或可信内网；
 - 单用户；
 - 生成测试数据；
-- 一个普通 Web/API 应用；
-- 默认监听 localhost。
+- 一个普通 Web 和 API 应用；
+- 默认只对本机开放。
 
 它不是：
 
@@ -18,13 +22,11 @@ InfraSourceLab MVP 是：
 - 任意脚本平台；
 - 企业身份管理系统。
 
-安全措施必须覆盖真实风险，但不能把首版拖成安全平台建设。
-
----
+安全措施要覆盖真实风险，但不能把首版拖成安全平台建设。
 
 ## 2. API 认证
 
-配置：
+计划配置：
 
 ```text
 ISL_API_KEY=<secret>
@@ -39,18 +41,16 @@ Authorization: Bearer <ISL_API_KEY>
 要求：
 
 - 使用安全字符串比较；
-- 缺失/错误返回 401；
-- 日志不记录完整 key；
-- 错误响应不回显 key；
+- 缺失或错误时返回 401；
+- 日志不记录完整 Key；
+- 错误响应不回显 Key；
 - `.env` 不提交 Git；
 - `.env.example` 只放占位符；
-- 默认 bind `127.0.0.1`。
+- Docker Compose 默认只发布到 `127.0.0.1`。
 
-`GET /health` 可以无认证。
+`GET /health` 可以不认证。
 
-FastAPI `/docs` 是否需要认证可以按实现成本选择，但必须文档说明；本地默认下不因此建设复杂中间件体系。
-
----
+FastAPI `/docs` 是否认证可根据实现成本决定，但必须文档说明，不能为此建设复杂中间件体系。
 
 ## 3. 前端中的 API Key
 
@@ -58,19 +58,17 @@ FastAPI `/docs` 是否需要认证可以按实现成本选择，但必须文档�
 
 允许：
 
-- 内存；
-- sessionStorage。
+- 仅保存在内存；
+- 保存在 `sessionStorage`。
 
 不允许：
 
 - 写入源码或构建产物；
-- 放在 URL query；
-- 发送到 AI；
-- 打印 Console；
+- 放进 URL 查询参数；
+- 发送给 AI；
+- 打印到 Console；
 - 回显服务端环境变量真值；
-- 默认长期 localStorage 明文保存。
-
----
+- 默认长期保存在 `localStorage`。
 
 ## 4. AI Provider 凭据
 
@@ -85,173 +83,161 @@ ISL_AI_MODEL
 - 只在后端读取；
 - 不返回浏览器；
 - 不写普通日志；
-- provider 错误做简化和脱敏；
-- 请求有 timeout、输入长度和响应大小限制；
-- 测试使用 fake provider。
+- Provider 错误要简化和脱敏；
+- 请求设置超时、输入长度和响应大小限制；
+- 自动化测试使用假 Provider。
 
-AI 只返回 GenerationSpec，不获得数据库、文件系统、shell 或运行权限。
-
----
+AI 只返回 `GenerationSpec`，不能访问数据库、文件系统、命令行或运行环境。
 
 ## 5. 输入安全
 
-MVP 的外部输入：
+MVP 外部输入主要包括：
 
-- prompt；
-- GenerationSpec JSON；
-- query parameters；
-- dataset name；
-- export format。
+- 提示词；
+- `GenerationSpec` JSON；
+- 查询参数；
+- 数据集名称；
+- 导出格式。
 
-必须：
+必须计划实现：
 
 - Pydantic 权威校验；
-- prompt/request 字节上限；
-- CI 类型 count 和总 count 上限；
+- 提示词和请求体大小上限；
+- 单类 CI 数量和总数量上限；
 - 字符串长度上限；
-- custom field 数量/深度上限；
-- page_size 上限；
-- export format allowlist；
-- 稳定、有限的错误响应。
+- 自定义字段数量和嵌套深度上限；
+- `page_size` 上限；
+- 导出格式白名单；
+- 稳定且有限的错误响应。
 
-首版不需要接受 YAML、压缩包、HAR、任意文件上传或 URL import，因此无需为这些未实现能力建设复杂清洗管道。
-
----
+首版不接受 YAML、压缩包、HAR、任意文件上传或 URL 导入，因此不需要为这些未实现能力建设清洗管道。
 
 ## 6. 禁止任意执行
 
-GenerationSpec 不允许：
+`GenerationSpec` 不允许包含：
 
 ```text
-shell command
-Python/JavaScript
-Jinja expression
-Docker image
-host path
-SQL fragment
-arbitrary URL callback
-plugin package
+命令行指令
+Python 或 JavaScript
+Jinja 表达式
+Docker 镜像
+宿主机路径
+SQL 片段
+任意 URL 回调
+插件包
 ```
 
-Custom type 只允许有限、安全、JSON-compatible 字段生成规则。
-
----
+自定义类型最多只允许有限、安全、JSON 兼容的字段生成规则。
 
 ## 7. 数据库与事务
 
-SQLite 文件放在受控数据目录。
+SQLite 文件计划放在受控数据目录。
 
 要求：
 
-- 不把 API/AI key 写入 dataset；
-- dataset 删除只删除对应 records/relations；
-- 生成失败不留下伪成功数据集；
-- relation foreign reference 在发布前校验；
-- SQLAlchemy 参数化查询；
-- API 不暴露任意 SQL/JSON path 查询。
+- 不把 API Key 或 AI Key 写入数据集；
+- 删除数据集时只删除其对应记录和关系；
+- 生成失败时不留下伪成功数据集；
+- 发布前校验所有关系引用；
+- SQLAlchemy 使用参数化查询；
+- API 不暴露任意 SQL 或 JSON 路径查询。
 
-本地工具不需要数据库加密集群、HA 或复杂备份系统。文档说明用户可备份 SQLite 文件即可。
-
----
+本地工具不需要数据库加密集群、高可用或复杂备份系统。用户备份 SQLite 文件即可。
 
 ## 8. 导出安全
 
-- 文件名由 dataset ID/安全 slug 生成；
-- format allowlist；
-- 不接受任意输出路径；
-- 临时文件放受控目录并清理；
-- CSV/XLSX 对以 `=`, `+`, `-`, `@` 开头的用户可控单元格考虑公式注入转义；
+- 文件名由数据集 ID 或安全短名称生成；
+- 导出格式使用白名单；
+- 不接受用户指定任意输出路径；
+- 临时文件放在受控目录并及时清理；
+- CSV 和 XLSX 对以 `=`、`+`、`-`、`@` 开头的用户可控单元格考虑公式注入转义；
 - 导出不包含 API Key 或 AI Key。
-
----
 
 ## 9. 网络
 
-默认：
+宿主机默认只发布：
 
 ```text
 127.0.0.1
 ```
 
-用户显式改成 `0.0.0.0` 时，文档提示：
+应用在容器内可以监听 `0.0.0.0` 以支持端口映射，但 Compose 默认必须使用类似：
 
-- 必须使用强 API Key；
-- 最好放在受控网络或反向代理后；
+```text
+127.0.0.1:8080:8080
+```
+
+用户主动对局域网或公网开放时，应明确提示：
+
+- 使用强 API Key；
+- 放在受控网络或反向代理后；
 - MVP 不承诺公网多用户安全。
 
-不需要 Docker socket、privileged container、host network 或远程 Agent。
-
----
+不需要 Docker socket、特权容器、宿主网络或远程 Agent。
 
 ## 10. 日志
 
 可以记录：
 
-- endpoint；
-- dataset ID；
-- count；
-- duration；
-- provider status/error category。
+- 接口路径；
+- 数据集 ID；
+- 数量；
+- 耗时；
+- Provider 状态和错误类别。
 
-不要记录：
+不能记录：
 
-- Bearer token；
+- Bearer Token；
 - AI API Key；
-- 完整 prompt（默认）；
+- 默认完整提示词；
 - 完整大数据集；
-- Authorization header；
-- browser session key。
-
----
+- Authorization 请求头；
+- 浏览器会话 Key。
 
 ## 11. 依赖与许可证
 
 InfraSourceLab 自有代码采用根目录 **Apache License 2.0**。
 
-第三方依赖：
+第三方依赖要求：
 
-- 使用正常包管理 lockfile；
+- 使用正常包管理锁定文件；
 - 记录主要依赖版本；
-- 不复制未知许可证源码；
+- 不复制许可证不明的源码；
 - shadcn/ui 组件按其正常使用方式进入项目；
-- Mimesis/Faker、xlsx 库、assistant-ui 等在实施时核对当前许可证。
+- Faker、Mimesis、XLSX 库、assistant-ui 等在实施时核对当时的许可证。
 
-首版不需要建立大型 SBOM/供应链平台；基础依赖扫描和许可证检查放入 CI 即可。
-
----
+首版不建设大型软件物料清单或供应链平台；基础依赖扫描和许可证检查放入 CI 即可。
 
 ## 12. 不建设的安全系统
 
 MVP 明确不做：
 
-- 用户注册/登录；
+- 用户注册和登录；
 - RBAC；
-- OAuth/OIDC/SSO；
-- API Key 数据库和权限 Scope；
+- OAuth、OIDC 或 SSO；
+- API Key 数据库和权限范围；
 - mTLS Agent；
-- Docker sandbox；
+- Docker 沙箱；
 - 多租户隔离；
 - 审批工作流；
 - 企业审计平台；
-- WAF/公网防护方案。
+- WAF 或公网防护方案。
 
-如果未来部署模式变化，再按真实威胁模型新增 focused Issue。
+如果未来部署模式变化，再根据新的真实威胁模型建立范围明确的 Issue。
 
----
+## 13. MVP 安全验收
 
-## 13. MVP Security Gate
-
-Review 时只需重点证明：
+Issue #1 真正实现后，审查重点只需要证明：
 
 1. 无 Key 的数据接口返回 401；
-2. 正确 Key 可调用；
-3. Key 不出现在日志、URL、导出和 AI 请求；
+2. 正确 Key 可以调用；
+3. Key 不出现在日志、URL、导出和 AI 请求中；
 4. AI Key 只在后端；
-5. Spec/count/page/request 有上限；
-6. 无任意执行字段；
-7. SQLite 操作和删除不越界；
-8. 导出路径/格式安全；
-9. 默认只监听 localhost；
-10. 不出现 Docker socket/privileged runtime。
+5. 规格、数量、分页和请求体都有上限；
+6. 不存在任意执行字段；
+7. SQLite 操作和删除不会越界；
+8. 导出路径和格式安全；
+9. 默认只对本机发布端口；
+10. 不使用 Docker socket 或特权运行环境。
 
-通过这十项即可，不因“未来可能公网化”阻塞本地 MVP。
+通过这些与本地部署相匹配的检查即可，不因未来可能公网化而阻塞 MVP。
