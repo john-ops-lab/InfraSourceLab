@@ -1,368 +1,386 @@
-# InfraSourceLab 前端产品与设计工程方案
+# InfraSourceLab 前端设计
 
-## 1. 决策摘要
+## 1. 目标
 
-InfraSourceLab 前端不以 DataLinkRuntime 的视觉体系、Ant Design 或旧页面布局作为实现基线。
+前端只需要帮助用户完成：
+
+```text
+创建数据集
+→ 查看 CI 与关系
+→ 复制 API 调用方式
+→ 导出数据
+```
+
+不要把简单工具做成复杂运维平台、数据治理后台或低代码编辑器。
+
+---
+
+## 2. 设计工具与组件
 
 正式组合：
 
-1. **UI Skills** — `ibelick/ui-skills`：设计工程方法、playbook 与 Agent skills；
-2. **shadcn/ui** — `shadcn-ui/ui`：主要通用 UI 组件与源码级 design system；
-3. **assistant-ui** — `assistant-ui/assistant-ui`：AI Thread/Message/Composer/Tool/Generative UI；
-4. **Chrome DevTools MCP** — `ChromeDevTools/chrome-devtools-mcp`：真实 Chrome 点击、截图、Console/Network、Performance、响应式检查；
-5. **Playwright**：稳定行为 regression。
-
 ```text
-UI Skills → design guidance
-shadcn/ui → product component/design system
-assistant-ui → AI UX/runtime primitives
-Chrome DevTools MCP → real-browser inspect/debug
-Playwright → regression
+UI Skills             → 页面层级与交互方法
+shadcn/ui + Tailwind  → UI 组件与视觉体系
+assistant-ui          → 创建页自然语言交互
+Chrome DevTools MCP   → 真实浏览器检查
+Playwright            → 稳定回归
 ```
 
-UI Skills 与 Chrome DevTools MCP 是开发/验收工具，不是产品 runtime dependency。
-
-Qoder 配置见 `docs/qoder-frontend-tooling.md`。
-
----
-
-## 2. One Design System Rule
-
-M0 必须建立并提交**唯一**的 shadcn project baseline：
+运行时建议：
 
 ```text
-components.json
-Tailwind v4 global theme/tokens
-selected shadcn style/preset
-selected primitive base (current shadcn choice: Base UI / Radix etc.)
-selected icon library
-component aliases / import paths
+React + TypeScript + Vite
+Tailwind CSS v4
+shadcn/ui
+assistant-ui
+i18next
+Vitest + Testing Library
+Playwright
 ```
 
-具体 preset/base/icon 不在架构阶段替 Qoder 猜，M0 应先用当前 `shadcn` CLI/info/docs 比较后做一次有意识选择，并在 Issue completion report 记录。
-
-### 一旦 M0 定下
-
-后续 Wave 默认**继承**，不能每个 Go Mode session：
-
-- 重新 `shadcn init` 一套不同 preset；
-- 随意切 Base UI/Radix primitive base；
-- 换 icon library 导致全项目风格漂移；
-- 新建第二份 global theme/tailwind config；
-- 引入第二套通用 Button/Dialog/Table/Form 组件库。
-
-真正要切 preset/base/icon library，必须作为显式架构迁移，有 diff、浏览器回归和外部 Review。
-
-### assistant-ui 必须融入同一体系
-
-assistant-ui 提供 AI primitives/runtime，但其 styled/scaffolded components 必须：
-
-- 使用当前项目的 shadcn/Tailwind theme tokens；
-- 使用当前项目同一个 primitive base/aliases/icon policy；
-- 不初始化第二套 shadcn theme；
-- 不形成“普通页面一种视觉、AI 页面另一种视觉”。
-
-assistant-ui 负责 AI UX 能力，不拥有第二套产品 Design System。
-
----
-
-## 3. 产品交互：AI-first，不把 YAML 当主流程
+明确不使用：
 
 ```text
-A. AI Create / Describe Lab        默认入口
-B. Visual Scenario Builder         可视化精调
-C. YAML Expert Mode                Monaco 专家模式
-                  ↓
-             Scenario Working Copy
-                  ↓
-        Validate / Estimate / Preview
-                  ↓
-              Save Revision
-                  ↓
-       Authoritative Compile / Start
+Ant Design
+DLR CSS / Shell / Catalog
+Monaco as a product dependency
+第二套通用组件库
+大型 dashboard template
 ```
 
-### AI Create
-
-首页/新建主任务：**描述你想模拟的 IT 环境**。
-
-平台先返回 structured proposal：Environment / Sources / Data Quality / Estimate，而不是先展示大段 YAML。
-
-AI Provider 未配置时显示清晰 unavailable/not-configured 状态，Builder/Expert YAML 和 non-AI core 仍可用。
-
-### Visual Builder
-
-覆盖高频 80%：Environment、Sources、Data Quality、M2 起常用 Timeline/Fault。
-
-不是通用低代码 DAG，也不把所有 Driver 私有字段做成大表单。
-
-### Expert YAML
-
-用于高级字段、精确控制、diagnostics、revision/YAML Diff、copy/share/debug；不抢占默认 Create Lab 主视觉。
+首版不需要 YAML 编辑器。
 
 ---
 
-## 4. Working Copy / Round-trip
+## 3. 信息架构
 
-AI、Builder、Expert YAML 操作同一逻辑 semantic Working Copy。
-
-前端可有局部 form/editor buffer，但提交后收敛到服务端 typed document + `semantic_digest`。
-
-Builder 应：
+只保留四个区域：
 
 ```text
-current typed document
- ↓ patch known paths
-preserve untouched valid advanced fields
- ↓ validate/serialize
+Create
+Datasets
+Dataset Detail
+Settings / API Usage
 ```
 
-不能只抽取 Builder 字段后重建整份 Scenario。
+导航可以很轻：顶部导航或简单 Sidebar，依据 UI Skills 和真实页面效果决定。
 
-有 Builder 无法表达的合法 advanced config 时显示提示。
-
-### Raw YAML vs semantic
-
-必须保留语义；不承诺所有 comments/whitespace/key ordering 逐字符 round-trip。详见 `docs/scenario-model.md`。
-
----
-
-## 5. Authoring / Runtime 用户动作层级
-
-### Unsaved Working Copy
-
-允许 Validate / Estimate / AI Candidate / editing。
-
-不允许 authoritative Compile / Start。
-
-### Immutable Revision
-
-显式 Save 后产生。
-
-### Compile
-
-只接受 immutable Revision。
-
-### Run
-
-只接受成功 Compile Manifest。
-
-UI 要把 Preview / Save / Compile / Start 的层级表达清楚，不做一个语义不透明的万能按钮。
-
----
-
-## 6. Runtime 前端技术栈
-
-| 层 | 选型 |
-|---|---|
-| Framework | React 19 + TypeScript |
-| Build | Vite 7 |
-| Styling | Tailwind CSS v4 |
-| UI components | shadcn/ui |
-| AI UX | assistant-ui |
-| Expert editor | Monaco Editor |
-| i18n | i18next + react-i18next |
-| Unit/component | Vitest + Testing Library |
-| Browser regression | Playwright |
-| Agent browser inspection | Chrome DevTools MCP |
-
-明确不使用 Ant Design / Ant Design Pro / DLR Design System / 第二套通用 UI framework。
-
----
-
-## 7. shadcn/ui 使用规则
+不要预留一排没有实现的：
 
 ```text
-shadcn info
- ↓
-search / docs / view
- ↓
-reuse / compose
- ↓
-custom only when actually needed
-```
-
-要求：
-
-- semantic theme tokens；
-- built-in variants first；
-- proper Field/form validation；
-- Dialog/Sheet/Drawer accessible Title；
-- AlertDialog for destructive action；
-- state not color-only；
-- Empty/Skeleton/Alert/sonner reuse；
-- big tables paged/virtualized；
-- registry component 加入后读实际生成源码再 Review。
-
----
-
-## 8. UI Skills 的角色
-
-新主页面/明显 UI 改版先回答：
-
-1. 页面主要任务是什么？
-2. 第一视觉焦点是什么？
-3. 主操作是否明显？
-4. advanced capability 是否过早暴露？
-5. 是否有无价值 Cards/Charts？
-6. 是否可复用 shadcn？
-7. empty/error/slow/long-text/narrow 状态？
-8. 真实 Chrome 是否符合意图？
-
-推荐：Issue → UI Skills → IA/progressive disclosure → shadcn → implementation → Chrome → iterate。
-
----
-
-## 9. 信息架构
-
-一级入口：
-
-```text
-Create Lab / Home
-Scenarios
 Runs
-Sources / Drivers
+Sources
+Timeline
+Faults
 Verification
-Settings
+Agents
+Drivers
 ```
 
-Scenario：Overview / Builder / World / Sources / Timeline / Runs / Verify / Expert YAML。
+---
 
-M0/M1 Create：
+## 4. Create 页面
+
+Create 是第一主页面。
+
+### 页面主任务
 
 ```text
-[ AI prompt + examples ]
-Start from [Guided Builder] [Template] [Expert YAML]
+描述你需要的 CMDB 配置数据
+[ assistant-ui composer ]
+[ 示例 prompt chips ]
 ```
 
-### Import staging
+示例：
 
-General Importer/Attachment 属于 M5。M5 前不放 active/disabled fake Import CTA 冒充已完成能力。
+- 两个数据中心、100 台服务器和 500 台虚拟机；
+- 50 个应用、10 个数据库以及依赖关系；
+- 一个 Kubernetes 集群、20 个节点和 200 个工作负载。
 
-M4A NETCONF YANG input、M4B replay capture ingest 是 Driver-specific input，不等同 M5 general Importer。
+### AI 返回
 
----
-
-## 10. Visual Builder 边界
-
-可视化：规模/数量、Source 选择、常见脏数据、简单关系、常用 Timeline/Fault、resource estimate/capability diagnostics。
-
-不做：任意表达式、DAG、通用关系拖拽平台、每 Driver 独立大配置页、完整复制 DSL。
-
----
-
-## 11. AI UX
-
-assistant-ui 是唯一 AI UX 基础，不写第二套聊天框。
-
-### M1 minimum
-
-- Create AI；
-- structured Candidate；
-- `base_semantic_digest` stale blocking；
-- invalid Candidate blocked；
-- Apply only Working Copy。
-
-### M5 advanced
-
-- Context Assistant；
-- streaming/cancel/retry/Regenerate；
-- attachment/import；
-- context snippets；
-- tool-call/generative UI；
-- frozen snapshot；
-- richer 3-way conflict/rebase。
-
-具体 Sheet/Resizable/workspace layout 由 UI Skills + Chrome 决定，不继承 DLR fixed sidebar。
-
----
-
-## 12. Structured Diff First
-
-先显示语义变化：
+不要先显示原始 JSON。先显示结构化摘要：
 
 ```text
-+ 1 site
-+ 200 servers
-+ 1 vCenter
-~ Excel refresh → frozen
-+ 2% wrong-IP
+Data set
+Medium enterprise
+
+CI types
+2 data centers
+30 racks
+200 physical servers
+800 virtual machines
+80 applications
+
+Relations
+contains / mounted_in / runs_on / hosted_on
+
+Seed
+20260825
 ```
 
-需要时再看 YAML Diff。Raw YAML Diff 不是普通用户唯一理解方式。
+用户可直接修改：
+
+- dataset name；
+- seed；
+- 每个类型 count；
+- 删除/增加内置类型；
+- 删除/增加简单关系。
+
+主操作：
+
+```text
+[Generate Dataset]
+```
+
+### AI 未配置
+
+显示清晰 fallback：
+
+```text
+AI provider is not configured.
+Start from a template instead.
+```
+
+并提供 3～4 个模板，不要把页面变成错误死路。
 
 ---
 
-## 13. Error / Capability States
+## 5. Datasets 页面
 
-正式设计：
+简单列表或表格：
 
-- AI provider not configured/unavailable；
-- invalid/stale Candidate；
-- validation/resource hard limit；
-- Driver unavailable on host；
-- transport/fault unsupported（包括 TCP-vs-UDP）；
-- Control/Agent unavailable；
-- Compile failed；
-- Run partial/failed；
-- Verify failed；
-- Builder advanced config warning。
+```text
+Name
+Created at
+CI count
+Relation count
+Seed
+Actions
+```
 
-错误必须可操作，不只“请求失败”。
+需要：
+
+- 搜索名称；
+- 打开详情；
+- 明确删除确认；
+- empty state；
+- loading/error。
+
+不需要：
+
+- KPI dashboard；
+- 趋势图；
+- 多维筛选器；
+- 复杂批量操作。
 
 ---
 
-## 14. 大数据 UI
+## 6. Dataset Detail
 
-Truth/Source/Verification 10k–100k：server-side paging/filter when suitable、virtualization、bounded detail payload、no massive DOM、long ID/URL overflow/copy、Chrome performance trace。
+推荐顶部 summary + Tabs：
 
-Run Truth historical-version navigation 也要能在大规模下工作。
+```text
+Overview
+CI Data
+Relations
+API & Export
+Topology (Issue #2 only)
+```
+
+## 6.1 Overview
+
+显示：
+
+- 名称/描述；
+- prompt；
+- seed；
+- generator version；
+- CI/关系总数；
+- 按类型数量；
+- GenerationSpec 的结构化摘要。
+
+原始 spec 可以放在 Advanced/Sheet 中以 JSON 查看，但不是主视觉，也不要求编辑。
+
+## 6.2 CI Data
+
+使用 shadcn Table/Data Table 组合：
+
+- type filter；
+- keyword search；
+- server pagination；
+- ID、type、name、常用字段摘要；
+- 点击行后 Sheet 显示完整 attributes/tags。
+
+不要一次加载/渲染 10k 行。
+
+## 6.3 Relations
+
+表格字段：
+
+```text
+relation ID
+type
+from
+from type/name
+to
+to type/name
+```
+
+支持 type/from/to filter 和分页。
+
+## 6.4 API & Export
+
+这是产品核心页面之一，不是设置角落。
+
+显示：
+
+- Base URL；
+- dataset ID；
+- Bearer Token Header 提示；
+- CI endpoint；
+- Relations endpoint；
+- copyable curl；
+- JSON/CSV/XLSX download buttons；
+- API Key 只显示占位符，不回显环境变量真值。
 
 ---
 
-## 15. Chrome DevTools MCP 完成定义
+## 7. Settings / API Usage
 
-UI Wave 必须真实检查：
+MVP 不做账号管理。
 
-- primary flow clicks；
+页面只需要：
+
+- 当前 API Key 是否已在浏览器会话录入；
+- 输入/替换 key；
+- 清除 key；
+- AI Provider configured/unconfigured 状态；
+- API docs link；
+- local-first / bind address 提示。
+
+Key 可放 sessionStorage 或仅内存。不要写进 bundle、URL、日志或持久化普通数据库。
+
+---
+
+## 8. assistant-ui 使用边界
+
+assistant-ui 只服务 Create 页：
+
+- Composer；
+- user/assistant message；
+- loading/cancel/error；
+- structured proposal card；
+- retry。
+
+不建设：
+
+- 长期聊天历史产品；
+- 多会话管理；
+- attachments；
+- tool marketplace；
+- coding agent；
+-复杂 Context Assistant。
+
+AI 输出最终必须经过后端 `GenerationSpec` 校验。
+
+---
+
+## 9. shadcn 使用规则
+
+优先复用：
+
+| 需求 | 组件 |
+|---|---|
+| Navigation | Sidebar / NavigationMenu |
+| Create form | Card / Field / Input / Button / Select |
+| Type counts | Table / Input / Select / Trash action |
+| Dataset list | Table / Pagination / DropdownMenu |
+| Detail | Tabs / Badge / Sheet / Separator |
+| Delete | AlertDialog |
+| Feedback | Alert / Sonner |
+| Loading | Skeleton / Spinner |
+| Empty | Empty |
+| API examples | Code block / copy Button |
+
+先查询 shadcn 当前 registry/docs，再写自定义基础控件。
+
+使用统一 semantic tokens，不给每种 CI 类型设计一套彩虹色卡片。
+
+---
+
+## 10. 视觉原则
+
+- 首屏一眼看见“描述你要生成的数据”；
+- 主按钮明确；
+- 信息密度适中，不堆十几个统计卡片；
+- 数据页以表格和筛选为主；
+- 高级 JSON 渐进披露；
+- 状态不只靠颜色；
+- 中英文长文本不溢出；
+- 1024 宽桌面仍可操作；
+- 不强行 mobile-first。
+
+---
+
+## 11. 简单拓扑（Issue #2）
+
+只有 MVP 完成后才增加。
+
+设计边界：
+
+- 从已有记录/关系绘图；
+- 默认限制可见节点数量；
+- type/relation/search filters；
+- 点击节点查看详情；
+- fit/zoom/pan；
+- 不编辑拓扑；
+- 不引入图数据库；
+- 不为 10k 节点强行全量渲染。
+
+---
+
+## 12. Chrome DevTools MCP 完成定义
+
+#1 至少真实检查：
+
+```text
+录入 API Key
+→ Prompt
+→ AI proposal / template fallback
+→ 调整 counts/seed
+→ Generate
+→ CI table filter/page
+→ Relation table
+→ API curl copy
+→ JSON/CSV/XLSX export
+```
+
+检查：
+
 - 1024 / 1280 / 1440 / 1920；
-- screenshot/hierarchy；
 - Console；
-- Network 4xx/5xx/duplicate/slow；
-- loading/empty/error；
-- keyboard/focus；
-- long zh/en text；
-- heavy-page trace；
-- Builder↔YAML semantic sync；
-- AI stale/provider states；
-- fault transport capability UX where relevant。
+- Network；
+- loading/error/empty；
+- AI unconfigured；
+- wrong API Key 401；
+- long prompt/name；
+- 10k paginated data；
+- keyboard/focus。
 
-Chrome MCP 用于探索/调试；稳定路径最终用 Playwright。
-
----
-
-## 16. 前端安全
-
-- provider secret server-side；
-- generated credential not permanently cleartext；
-- unsanitized raw capture not sent to AI；
-- browser evidence no production secrets；
-- Chrome MCP only test data；
-- AI approval UI != model execution permission；
-- destructive action explicit confirmation。
+发现阻塞问题要修复，不能用 `npm run build` 替代真实页面验收。
 
 ---
 
-## 17. 跨 Wave 红线
+## 13. 前端停止规则
 
-- AI-first / Builder / Expert YAML hierarchy stays；
-- Monaco not default home；
-- one committed shadcn baseline/components.json；
-- no silent preset/base/icon/theme re-init；
-- assistant-ui uses same shadcn design system；
-- UI Skills for design engineering；
-- Chrome MCP for real-browser review；
-- Playwright regression；
-- no Ant Design / DLR UI；
-- Import not faked before M5；
-- UI completion requires real Chrome evidence。
+当用户可以顺畅完成：
+
+```text
+Prompt → Generate → Browse → API/Export
+```
+
+就停止首版前端扩展。
+
+不要顺手增加 dashboard、日志中心、主题市场、复杂设置、聊天历史、拓扑编辑器或任何关闭 Issue 的入口。
