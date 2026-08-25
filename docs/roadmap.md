@@ -14,7 +14,7 @@
 → Bearer Token REST API
 → 文件导出
 
-          ↓ DLR 或 CMDB 实际使用
+          ↓ CMDB 实际使用
 
 第二阶段：Issue #2 可选增强
 简单拓扑
@@ -107,8 +107,8 @@ P1：XLSX
 不是继续追加功能，而是：
 
 1. 使用 curl 调用 API；
-2. 使用 DLR HTTP 适配器采集；
-3. 尝试导入后续 CMDB；
+2. 让 CMDB、数据导入程序或测试脚本读取认证 API；
+3. 尝试把生成的 CI 和关系导入目标 CMDB；
 4. 记录真实缺口；
 5. 进行外部代码审查；
 6. 修复严重和重要问题。
@@ -143,14 +143,14 @@ wrong_value
 
 这些是内部规则标识。规则必须可重复，不建设通用规则引擎。
 
-### 3.3 DLR 示例
+### 3.3 CMDB 使用示例
 
 计划编写一份简明示例：
 
 ```text
 InfraSourceLab Bearer Token API
-→ DLR HTTP 适配器
-→ 输出结果
+→ CMDB、数据导入程序或测试脚本
+→ 读取或导入结果
 ```
 
 不建设验证平台。
@@ -236,7 +236,7 @@ JSON / CSV
 ```text
 实现 Issue #1
 → 外部审查
-→ DLR 实际使用
+→ CMDB 实际使用
 → 修复严重问题
 → 关闭 Issue #1
 → 决定 Issue #2 是否仍有必要
