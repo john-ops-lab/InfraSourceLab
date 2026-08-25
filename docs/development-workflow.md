@@ -29,6 +29,7 @@ docs/architecture.md
 docs/scenario-model.md
 docs/backend-strategy.md
 docs/frontend-design.md
+docs/qoder-frontend-tooling.md
 docs/security-and-licensing.md
 docs/development-workflow.md
 目标 Issue
@@ -38,7 +39,37 @@ docs/development-workflow.md
 
 已关闭的 Issues #3～#8 不得作为待开发清单。
 
-## 3. 开始开发前
+## 3. 开发过程中必须使用的前端工具
+
+Issue #1 和后续前端功能开发，必须实际使用以下四项工具或项目：
+
+1. **UI Skills**  
+   https://github.com/ibelick/ui-skills
+
+   用于编码前确认主用户任务、信息层级、组件顺序、尺寸、状态和响应式设计。不能先随意完成页面，再在报告中补写“已使用 UI Skills”。
+
+2. **shadcn/ui**  
+   https://github.com/shadcn-ui/ui
+
+   作为组件和视觉体系的首选基础。常见按钮、表单、表格、页签、抽屉、对话框、提示、空状态和加载状态应先查询并复用 shadcn/ui，不得同时引入第二套大型通用组件库。
+
+3. **Chrome DevTools MCP**  
+   https://github.com/ChromeDevTools/chrome-devtools-mcp
+
+   用于让 Codex、Claude 或其他兼容代理直接操作真实 Chrome，完成点击、输入、截图、Console、Network、性能和响应式检查。构建成功、单元测试或 Playwright 通过都不能替代该门槛。
+
+4. **assistant-ui**  
+   https://github.com/assistant-ui/assistant-ui
+
+   用于创建页面中的 AI 输入、用户和助手消息、加载、取消、错误、重试以及结构化 `GenerationSpec` 建议。不得重新手写一套同类通用聊天界面。
+
+Playwright 仍用于自动化回归，但与 Chrome DevTools MCP 的真实浏览器验收缺一不可。
+
+如果 Qoder 当前环境无法直接调用 Chrome DevTools MCP，必须由能够调用它的 Codex、Claude 或其他兼容代理完成最终浏览器检查。在该证据完成前，前端不能标记为“等待审查”。
+
+更详细的执行约束见 [`docs/qoder-frontend-tooling.md`](qoder-frontend-tooling.md)。
+
+## 4. 开始开发前
 
 ```bash
 git checkout main
@@ -56,7 +87,15 @@ Issue #1 开始实现。
 
 只有出现这条真实留言，并且随后出现代码提交，项目状态才从“设计阶段”进入“开发中”。
 
-## 4. 给 Qoder 的首要指令
+同时确认：
+
+- 已读取 UI Skills；
+- 已确定 shadcn/ui 初始化方案；
+- 已确认 assistant-ui 的创建页集成边界；
+- 已确认 Chrome DevTools MCP 的调用方式；
+- 已确认最终 Playwright 回归路径。
+
+## 5. 给 Qoder 的首要指令
 
 建议使用中文：
 
@@ -68,12 +107,18 @@ InfraSourceLab 是一个精简的单体 CMDB 测试数据生成工具，不是�
 必须优先完成：
 自然语言或模板 → 经过校验的 GenerationSpec → 本地确定性生成 CI 与关系 → SQLite → Bearer Token REST API → JSON/CSV → 简单可用界面。
 
-前端使用 UI Skills、shadcn/ui、assistant-ui 和 Chrome DevTools MCP。
+前端开发必须实际使用：
+1. UI Skills：https://github.com/ibelick/ui-skills
+2. shadcn/ui：https://github.com/shadcn-ui/ui
+3. Chrome DevTools MCP：https://github.com/ChromeDevTools/chrome-devtools-mcp
+4. assistant-ui：https://github.com/assistant-ui/assistant-ui
+
+Playwright 用于固化回归，但不能替代 Chrome DevTools MCP 的真实 Chrome 验收。
 
 不要实现已关闭 Issue 或未来平台能力。所有门槛通过前不要更新 main；不需要创建 PR。
 ```
 
-## 5. Qoder 可以自主决定的内容
+## 6. Qoder 可以自主决定的内容
 
 在范围内可以自主决定：
 
@@ -88,7 +133,7 @@ InfraSourceLab 是一个精简的单体 CMDB 测试数据生成工具，不是�
 - 导出库选择；
 - Faker 或 Mimesis 的合理分工。
 
-## 6. 不允许自行增加
+## 7. 不允许自行增加
 
 ```text
 Lab Agent
@@ -113,22 +158,31 @@ RBAC / OAuth / SSO
 
 如果实现中发现 Issue #1 无法完成，应报告真实阻塞，不能用新平台掩盖问题。
 
-## 7. 前端开发闭环
+## 8. 前端开发闭环
 
 ```text
-确认主用户任务
-→ 使用 UI Skills 确定层级
+读取 UI Skills
+→ 明确主用户任务和页面层级
 → 查询并复用 shadcn/ui 组件
-→ 集成 assistant-ui 创建体验
-→ 在真实 Chrome 中操作
-→ 检查 Console、Network 和响应式
-→ 修复
-→ 用 Playwright 固化主路径
+→ 使用 assistant-ui 实现创建页 AI 交互
+→ 在真实 Chrome 中通过 Chrome DevTools MCP 操作
+→ 检查截图、Console、Network、性能和响应式
+→ 修复问题
+→ 用 Playwright 固化稳定主路径
 ```
 
 只通过 `npm run build` 不等于前端完成。
 
-## 8. 后端门槛
+前端完成报告必须能够回答：
+
+- UI Skills 的哪些判断真实改变了布局或交互；
+- 使用了哪些 shadcn/ui 组件，哪些控件必须自定义以及原因；
+- assistant-ui 负责了哪些界面状态；
+- Chrome DevTools MCP 由哪个代理执行，检查了哪些视口和流程；
+- Console、Network、性能和响应式结果；
+- 哪些主路径已经进入 Playwright。
+
+## 9. 后端门槛
 
 至少需要：
 
@@ -144,7 +198,7 @@ RBAC / OAuth / SSO
 
 XLSX、自定义类型和额外模板不得阻塞核心闭环。
 
-## 9. 更新主分支前的门槛
+## 10. 更新主分支前的门槛
 
 在直接更新 `main` 前必须确认：
 
@@ -152,14 +206,15 @@ XLSX、自定义类型和额外模板不得阻塞核心闭环。
 2. 后端测试通过；
 3. 前端类型检查、单元测试和构建通过；
 4. Playwright 主路径通过；
-5. Chrome DevTools MCP 检查无阻塞问题；
-6. Docker 或文档规定的本地启动方式可复现；
-7. README 和状态文档与真实代码一致；
-8. Issue 完成报告准确，不夸大未验证能力。
+5. 已实际使用 UI Skills、shadcn/ui 和 assistant-ui；
+6. Chrome DevTools MCP 已完成真实 Chrome 主流程、截图、Console、Network、性能和响应式检查；
+7. Docker 或文档规定的本地启动方式可复现；
+8. README 和状态文档与真实代码一致；
+9. Issue 完成报告准确，不夸大未验证能力。
 
 如果任何门槛未通过，代码可以保留在本地或工作分支，不能声称已经完成。
 
-## 10. 完成报告格式
+## 11. 完成报告格式
 
 Issue #1 真正实现后，使用中文记录：
 
@@ -175,13 +230,21 @@ Issue #1 实现完成，等待外部审查。
 未实现或明确延期：
 - ...
 
+前端必用工具证据：
+- UI Skills 关键决定：...
+- shadcn/ui 初始化与组件：...
+- assistant-ui 集成范围：...
+- Chrome DevTools MCP 执行代理、版本、视口和结果：...
+
 测试命令与结果：
 - ...
 
 浏览器验证：
 - 视口：...
+- 截图：...
 - Console：...
 - Network：...
+- 性能：...
 - 主流程：...
 
 示例数据：
@@ -196,7 +259,7 @@ Issue #1 实现完成，等待外部审查。
 
 不得在没有真实结束提交和可复现证据时填写“完成”。
 
-## 11. 外部审查
+## 12. 外部审查
 
 审查者应从 GitHub `main` 重新读取：
 
@@ -213,12 +276,14 @@ Issue #1 实现完成，等待外部审查。
 - API 是否方便 DLR 使用；
 - 大数据是否采用分页；
 - AI 和 API Key 是否泄露；
-- 前端是否存在真实浏览器问题；
+- UI Skills、shadcn/ui、assistant-ui 是否真实使用而非仅写入文档；
+- Chrome DevTools MCP 的真实浏览器证据是否完整；
+- 前端是否存在 Console、Network、性能或响应式问题；
 - README、Issue 和代码是否一致。
 
 外部审查只针对 GitHub 上真实存在的代码，不审查未提交临时目录或未关联 Git 对象。
 
-## 12. Issue #2 的启动条件
+## 13. Issue #2 的启动条件
 
 只有同时满足以下条件，才启动 Issue #2：
 
@@ -230,7 +295,9 @@ Issue #1 实现完成，等待外部审查。
 
 不得把 Issue #2 与 Issue #1 并行实现。
 
-## 13. 状态真实性规则
+Issue #2 如果启动，仍然必须使用同一套 UI Skills、shadcn/ui、Chrome DevTools MCP 和 assistant-ui 边界；其中 assistant-ui 只在确有 AI 交互时使用，不为拓扑页强行增加聊天入口。
+
+## 14. 状态真实性规则
 
 项目状态只能由 GitHub 事实支持：
 
