@@ -1,68 +1,46 @@
-# GenerationSpec 与数据模型
+# GenerationSpec 与数据模型设计
 
-> 文件名保留为 `scenario-model.md`，但首版不再建设复杂 Scenario DSL。唯一目标是定义 AI 和生成器之间的小型结构化合同。
+> **状态：设计阶段，尚未实现。**
+>
+> 文件名保留为 `scenario-model.md`，但首版不建设复杂场景 DSL。本文只定义 AI 与本地生成器之间的小型结构化合同。
 
 ## 1. 为什么需要 GenerationSpec
 
-不能让大模型直接生成数千条 CI：
+不能让大模型直接生成数千条 CI，原因包括：
 
-- 慢；
-- 费用高；
-- 容易漏关系和重复 ID；
+- 速度慢；
+- 成本高；
+- 容易遗漏关系或产生重复 ID；
 - 难以重复生成；
 - 很难严格校验。
 
-正确流程：
+计划流程：
 
 ```text
 自然语言
   ↓ AI
 GenerationSpec
-  ↓ local deterministic generator
-CI Records + Relations
+  ↓ 本地确定性生成器
+CI 记录 + CI 关系
 ```
 
-普通用户主要通过 AI 或简单表单创建规格，不需要手写 JSON/YAML。
-
----
+普通用户主要通过 AI 或简单表单创建规格，不需要手写 JSON 或 YAML。
 
 ## 2. 最小结构
 
-建议 JSON 结构：
+建议 JSON：
 
 ```json
 {
   "name": "medium-enterprise",
-  "description": "Two data centers with compute and applications",
+  "description": "两个数据中心及其计算资源和应用",
   "seed": 20260825,
   "ci_types": [
-    {
-      "type": "data_center",
-      "count": 2
-    },
-    {
-      "type": "rack",
-      "count": 30
-    },
-    {
-      "type": "physical_server",
-      "count": 200,
-      "overrides": {
-        "environment_weights": {
-          "production": 70,
-          "test": 20,
-          "development": 10
-        }
-      }
-    },
-    {
-      "type": "virtual_machine",
-      "count": 800
-    },
-    {
-      "type": "application",
-      "count": 80
-    }
+    {"type": "data_center", "count": 2},
+    {"type": "rack", "count": 30},
+    {"type": "physical_server", "count": 200},
+    {"type": "virtual_machine", "count": 800},
+    {"type": "application", "count": 80}
   ],
   "relations": [
     {
@@ -87,8 +65,6 @@ CI Records + Relations
 }
 ```
 
----
-
 ## 3. 顶层字段
 
 | 字段 | 必填 | 说明 |
@@ -100,19 +76,17 @@ CI Records + Relations
 | `relations` | 否 | 类型间关系规则 |
 | `metadata` | 否 | 非执行性的备注信息 |
 
-不加入：
+不得加入：
 
 ```text
-Docker image
-shell command
-host mount
-workflow DAG
-timeline
-fault
-runtime endpoint
+Docker 镜像
+命令行指令
+宿主机挂载路径
+工作流有向图
+时间线
+故障脚本
+运行时接口
 ```
-
----
 
 ## 4. CITypeSpec
 
@@ -126,11 +100,11 @@ runtime endpoint
 
 规则：
 
-- `type` 必须是内置类型或合法 custom type；
-- `count >= 0`；
-- 每类型和总数量有可配置上限；
-- `overrides` 只接受该模板明确支持的简单参数；
-- 未知 override 返回诊断，不静默忽略。
+- `type` 必须是内置类型或合法的简单自定义类型；
+- `count` 不得为负数；
+- 每种类型和总数量都有可配置上限；
+- `overrides` 只接受模板明确支持的简单参数；
+- 未知覆盖参数必须返回诊断，不能静默忽略。
 
 ### 内置类型
 
@@ -149,11 +123,9 @@ kubernetes_node
 kubernetes_workload
 ```
 
----
-
 ## 5. 内置字段建议
 
-## 通用字段
+### 通用字段
 
 ```text
 name
@@ -165,9 +137,9 @@ tags
 created_at_like_test_value
 ```
 
-时间字段是生成的业务测试值，不使用真实系统创建时间来影响确定性。
+时间字段是生成的业务测试值，不能使用真实系统创建时间影响确定性。
 
-## physical_server
+### 物理服务器
 
 ```text
 hostname
@@ -181,7 +153,7 @@ os_name
 os_version
 ```
 
-## virtual_machine
+### 虚拟机
 
 ```text
 hostname
@@ -193,7 +165,7 @@ power_state
 os_name
 ```
 
-## network_device
+### 网络设备
 
 ```text
 hostname
@@ -205,7 +177,7 @@ management_ip
 software_version
 ```
 
-## application
+### 应用
 
 ```text
 code
@@ -216,7 +188,7 @@ criticality
 lifecycle_status
 ```
 
-## database
+### 数据库
 
 ```text
 name
@@ -227,7 +199,7 @@ port
 environment
 ```
 
-## middleware
+### 中间件
 
 ```text
 name
@@ -238,15 +210,13 @@ port
 environment
 ```
 
-## Kubernetes
+### Kubernetes
 
-只提供配置数据需要的简单字段，不复制完整 Kubernetes API 对象。
+只提供配置数据测试需要的简单字段，不复制完整 Kubernetes API 对象。
 
----
+## 6. 自定义类型
 
-## 6. Custom type
-
-简单 custom type 示例：
+自定义类型属于低优先级。简单示例：
 
 ```json
 {
@@ -261,7 +231,7 @@ environment
 }
 ```
 
-首版只支持有限字段生成器：
+最多只允许有限字段生成器：
 
 ```text
 constant
@@ -274,11 +244,9 @@ hostname
 uuid
 ```
 
-禁止任意 Python、JavaScript、Jinja 或表达式执行。
+这些是内部类型标识。不得执行任意 Python、JavaScript、Jinja 或表达式。
 
-如果 custom type 会明显拖慢 MVP，可以先实现内置类型并把 custom type 标为后续小增强，但不得为它建设插件系统。
-
----
+如果自定义类型会拖慢 MVP，就先不实现，且不得为它建设插件系统。
 
 ## 7. RelationSpec
 
@@ -309,39 +277,38 @@ has_ip
 ```text
 balanced          尽量平均分配
 round_robin       按顺序轮转
-random_seeded     基于 seed 的随机连接
-one_to_many       一个 from 对多个 to，数量由简单参数控制
+random_seeded     基于 seed 的可重复随机连接
+one_to_many       一对多连接
 ```
 
-不要建立通用图规则语言。
+不建设通用图规则语言。
 
 ### 关系校验
 
-- from/to 类型必须存在；
-- 目标 count 为 0 时拒绝不可能关系；
-- from_id/to_id 必须引用当前数据集记录；
-- relation ID 稳定；
-- 默认不生成自环，除非关系明确允许；
-- 同一规则是否允许重复边要明确。
-
----
+- 起点和终点类型必须存在；
+- 目标数量为零时拒绝不可能关系；
+- `from_id` 和 `to_id` 必须引用当前数据集记录；
+- 关系 ID 必须稳定；
+- 默认不生成自环；
+- 是否允许重复边必须明确。
 
 ## 8. 确定性
 
-同一：
+同一组：
 
 ```text
-normalized GenerationSpec
+规范化 GenerationSpec
 + seed
-+ generator version
++ 生成器版本
 ```
 
-必须产生相同：
+必须产生相同的：
 
 - CI ID；
 - 主要字段值；
 - 关系端点；
-- 排序和导出内容（不含导出时间等非确定 metadata）。
+- 排序；
+- 不包含导出时间等动态元数据时的导出内容。
 
 推荐 ID：
 
@@ -354,42 +321,38 @@ app-0001
 relation-000001
 ```
 
-不使用随机 UUID 作为唯一可复现 ID；需要 UUID 字段时使用 seed/namespace 派生。
-
----
+需要 UUID 字段时，应由 seed 和命名空间派生，而不是使用不可重复的随机 UUID。
 
 ## 9. AI 输出合同
 
-AI Response 最好包含：
+建议 AI 响应：
 
 ```json
 {
-  "message": "我将生成……",
+  "message": "我计划生成以下数据……",
   "spec": {},
   "warnings": []
 }
 ```
 
-服务端必须重新：
+服务端必须重新执行：
 
 ```text
-parse
-→ Pydantic/schema validation
-→ count limit
-→ type validation
-→ relation validation
-→ normalized spec
+解析
+→ Pydantic 或 JSON Schema 校验
+→ 数量上限校验
+→ 类型校验
+→ 关系校验
+→ 规格规范化
 ```
 
-模型声称“有效”不代表有效。
+模型声称“有效”不等于规格有效。
 
-但校验保持针对当前风险，不建设复杂审批、Revision 或三方合并系统。
-
----
+校验只覆盖当前风险，不建设复杂审批、修订或三方合并系统。
 
 ## 10. 数据记录格式
 
-### CI
+### CI 记录
 
 ```json
 {
@@ -407,7 +370,7 @@ parse
 }
 ```
 
-### Relation
+### CI 关系
 
 ```json
 {
@@ -421,11 +384,9 @@ parse
 
 API、数据库和导出围绕这两个简单模型工作。
 
----
-
 ## 11. 第二阶段数据质量
 
-Issue #2 可增加四种简单 deterministic defect：
+Issue #2 可增加四种简单、可重复的数据缺陷：
 
 ```text
 missing_field
@@ -434,20 +395,18 @@ duplicate_record
 wrong_value
 ```
 
-MVP #1 不因这些能力延迟交付。
-
----
+Issue #1 不得因为这些能力延迟交付。
 
 ## 12. 明确不进入模型
 
-- canonical Truth 与 Source Projection 双层世界；
-- Truth Version；
-- Compile/Run Manifest；
-- Timeline/Fault；
-- Protocol Driver config；
-- Observation/Verifier；
-- arbitrary scripts；
-- runtime containers/endpoints；
-- multi-tenant ownership。
+- 标准真值与来源投影双层世界；
+- 真值版本；
+- 编译或运行清单；
+- 时间线与故障；
+- 协议驱动配置；
+- 观察与验证；
+- 任意脚本；
+- 运行时容器和接口；
+- 多租户归属。
 
-GenerationSpec 是“生成一份数据集”的小合同，不是基础设施描述语言。
+`GenerationSpec` 只是“生成一份数据集”的小合同，不是基础设施描述语言。
