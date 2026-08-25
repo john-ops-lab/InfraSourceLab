@@ -4,20 +4,20 @@
 
 InfraSourceLab 当前采用个人快速开发模式：
 
-- GitHub `main` 是持续备份和阶段结果；
-- Qoder Go Mode 可以一次完成一个较大的 Wave；
-- 不要求每个小功能提交 PR；
-- 开发完成后直接更新 `main`；
-- Review 以 **Git commit range + 实际 main 源码** 为依据；
-- GitHub Issues 负责记录需求、验收条件和 review follow-up。
+- `main` 是阶段结果与持续备份；
+- Qoder Go Mode 一次完成一个较大 Wave；
+- 不要求每个小功能提 PR；
+- 完成后直接更新 `main`；
+- Review 使用 **Base SHA ... Head SHA + current main full source**；
+- GitHub Issue 负责需求、验收、实现报告、Review 与修复历史。
 
-这种模式可以成立，但必须保留明确 Base/Head 和严格验证证据。
+这种方式可以成立，但必须保留清晰 commit range 与真实验证证据。
 
 ---
 
 ## 2. 一个 Issue = 一个大 Wave
 
-Issue 可以比传统 Scrum Task 大，但仍必须有：
+Issue 可以大，但必须包含：
 
 - Goal；
 - Scope；
@@ -25,37 +25,34 @@ Issue 可以比传统 Scrum Task 大，但仍必须有：
 - architecture constraints；
 - acceptance criteria；
 - required tests；
+- browser/runtime evidence；
 - docs to update。
+
+大 Wave 不等于“一次随便改遍整个仓库”。
 
 ---
 
-## 3. 开始一个 Wave 前
+## 3. 开始一个 Wave
 
-### Step 1：同步 main
+### 3.1 同步 main
 
 ```bash
 git checkout main
 git pull --ff-only
-```
-
-working tree 必须 clean。
-
-### Step 2：记录 Base SHA
-
-```bash
+git status --short
 git rev-parse HEAD
 ```
 
-在对应 Issue 留言：
+working tree clean 后，将 SHA 写到目标 Issue：
 
 ```text
 Go Mode implementation started.
 Base SHA: <sha>
 ```
 
-### Step 3：先读产品/架构文档
+### 3.2 先读正式文档
 
-每次至少读：
+每次至少：
 
 ```text
 README.md
@@ -68,121 +65,114 @@ docs/development-workflow.md
 当前 Wave Issue
 ```
 
-### 涉及前端时必须再读
+涉及 Web：
 
 ```text
 docs/frontend-design.md
+docs/qoder-frontend-tooling.md
 ```
 
-并明确当前前端正式基线：
-
-```text
-UI Skills
-shadcn/ui
-assistant-ui
-Chrome DevTools MCP
-React 19 + TypeScript + Vite
-Tailwind CSS v4
-Monaco = Expert YAML only
-```
-
-**不要参考 DLR 的 CSS、Ant Design、Shell 或页面布局作为实现基线。**
-
-### 涉及 verifier/fault 时再读
+涉及 Fault/Verifier：
 
 ```text
 docs/verification-and-faults.md
 ```
 
----
-
-## 4. Qoder Go Mode 的自由度边界
-
-### 可以自主决定
-
-- 文件组织细节；
-- 类/函数命名；
-- 测试拆分；
-- 普通 CRUD；
-- 局部重构；
-- 修复开发中发现的明显 bug；
-- 在产品/架构约束内选择合适 shadcn 组件组合。
-
-### 不允许静默改变
-
-- 产品定位；
-- **AI-first + Visual Builder + Expert YAML** 的 authoring 层级；
-- Truth-first 架构；
-- Control/Lab Agent 权限边界；
-- Scenario DSL 核心语义；
-- Driver 不重复实现成熟协议原则；
-- AI Candidate/Apply/Start 安全边界；
-- 前端唯一主要组件体系为 shadcn/ui；
-- 第三方许可证策略；
-- 公开网络/host mount/任意 image 安全策略。
-
-若必须改变这些，先在 Issue 记录设计冲突，不自行“优化需求”。
-
----
-
-## 5. 前端开发必须走 Design Engineering Loop
-
-涉及新页面、主流程或明显视觉改版时，不能直接从 prompt 跳到 JSX。
+涉及具体数据源：
 
 ```text
-产品目标
-  ↓
-UI Skills / relevant design skill
-  ↓
-信息架构 / 主任务 / progressive disclosure
-  ↓
-shadcn registry / docs / existing components
-  ↓
-实现
-  ↓
-Chrome DevTools MCP 真实浏览器检查
-  ↓
-修正视觉 / 交互 / Console / Network / Performance
-  ↓
-Playwright 固化稳定回归
+docs/research/source-deep-dive.md
+docs/research/tool-landscape.md
 ```
 
-### shadcn 规则
-
-- 先 `info/search/docs/view`，再决定是否自定义；
-- Button/Dialog/Table/Select/Form/Alert/Empty/Skeleton 等常规组件不得重复造轮子；
-- 使用 semantic theme tokens；
-- Dialog/Sheet/Drawer 保持可访问标题；
-- forms 使用规范 Field/validation 语义；
-- 大列表分页/虚拟化。
-
-### UI Skills
-
-是 Agent 的设计工程参考，不是产品 runtime dependency。
-
-### Chrome DevTools MCP
-
-是开发/Review 工具，不是产品 runtime dependency。它用来让 Agent 实际看页面，而不是只读 DOM/代码猜 UI。
+research 是 dated evidence；正式实施阶段/边界以 current Issues + Roadmap + Architecture 为准。
 
 ---
 
-## 6. 开发期间提交
+## 4. 不可静默改变的架构合同
 
-不要求每个小功能一个 PR，但建议有意义 commits：
+Qoder 可以自主决定文件组织、类名、测试拆分、普通 CRUD、局部重构，但不能静默改变：
+
+1. AI-first + Visual Builder + Expert YAML 的 authoring 层级；
+2. 未保存 Working Copy 可以 validate/estimate；
+3. authoritative Compile **只基于 immutable Scenario Revision**；
+4. Run **只基于成功 Compile Manifest**；
+5. Builder/AI/Expert YAML 是同一 semantic Working Copy；
+6. AI Candidate 使用 semantic digest 防 stale blind overwrite；
+7. Truth-first + Source Projection；
+8. Core 不重新实现成熟协议；
+9. Control 不接 Docker socket；
+10. Agent 只接受 typed command / allowlisted runtime；
+11. AI 无 Save/Compile/Run/Fault/Docker 自动权限；
+12. shadcn/ui 是唯一主要通用组件体系；
+13. Driver capability 以 actual pinned backend version + integration test 为准；
+14. Apache-2.0 项目许可证不得自行更改。
+
+发现必须改变上述条件时，在 Issue 报告设计冲突，不靠修改文档让代码“变正确”。
+
+---
+
+## 5. 前端 Design Engineering Loop
+
+涉及新页面、主流程或明显视觉改版：
 
 ```text
-feat(core): add scenario revision model
+Product task
+  ↓
+UI Skills / relevant playbook
+  ↓
+IA / primary task / progressive disclosure
+  ↓
+shadcn info/search/docs/view
+  ↓
+implementation
+  ↓
+Chrome DevTools MCP real Chrome
+  ↓
+visual / Console / Network / Performance fixes
+  ↓
+Playwright regression
+```
+
+### 强制基线
+
+```text
+React 19 + TypeScript + Vite
+Tailwind CSS v4
+shadcn/ui
+assistant-ui
+Monaco = Expert YAML only
+```
+
+禁止：
+
+- Ant Design / Ant Design Pro；
+- DLR CSS/Shell/Design System copy；
+- textarea + fetch 第二套 AI UI；
+- 普通控件重复造 Button/Dialog/Table/Form；
+- M5 前放假的 Import 主 CTA。
+
+Qoder MCP/Skill 实际连接与版本见 `docs/qoder-frontend-tooling.md`。
+
+---
+
+## 6. 开发期间 commits
+
+不要求每个小功能一 PR，但建议有意义 commits：
+
+```text
+feat(authoring): add working-copy validation API
 feat(web): add guided scenario builder
-feat(compiler): build deterministic truth graph
-feat(ai): add validated scenario candidate
-fix(web): resolve narrow-width builder overflow
+feat(compiler): persist deterministic truth graph
+feat(ai): add validated candidate with semantic base digest
+fix(web): preserve advanced fields during builder round-trip
 ```
 
-最后直接 push main。
+避免一个超大“everything”提交，也不要为了形式制造几十个无意义 commit。
 
 ---
 
-## 7. Push main 前本地 Gate
+## 7. Push main 前 Gate
 
 ### Backend
 
@@ -204,39 +194,84 @@ npm run build
 
 ### Integration
 
-按 Wave 增加：
+按 Wave：
 
 ```text
+fresh DB migration
 compose smoke
-driver smoke
-reproducibility test
-cleanup/orphan test
-Playwright browser regression
+driver real-client smoke
+reproducibility
+authoring round-trip
+cleanup/orphan
+fault/recovery
+Playwright
 ```
 
-### 涉及 UI 的额外强制 Gate
+### Authoring 必查
 
-Qoder/Coding Agent 必须使用 Chrome DevTools MCP 在真实 Chrome 完成实际检查，并在 Issue 记录结果。
+相关 Wave 必须测试：
 
-至少检查：
+- unsaved Working Copy validate/estimate；
+- Save produces immutable Revision；
+- Compile rejects unsaved payload / requires Revision ID；
+- Start requires successful Compile ID/Manifest；
+- Builder preserves advanced valid fields；
+- source_digest vs semantic_digest behavior；
+- stale AI Candidate cannot blind Apply。
 
-- 主任务点击路径；
+### UI 必查
+
+Chrome DevTools MCP：
+
+- 主路径实际点击；
+- 1024 / 1280 / 1440 / 1920；
 - screenshot / visual hierarchy；
-- Console error/warning；
-- Network failed/duplicate/slow requests；
+- Console；
+- Network failed/duplicate/slow；
 - empty/loading/error；
 - long text；
 - keyboard/focus；
-- 1024 / 1280 / 1440 / 1920 desktop；
-- 重页面 Performance trace（有需要时）；
-- AI UI 的 draft/message/candidate state；
-- Visual Builder 与 Expert YAML 是否保持同一 Working Copy。
+- heavy page performance；
+- Builder ↔ Expert YAML semantic sync；
+- AI provider unconfigured/error states when relevant。
 
-不能以 `npm run build` 替代 UI 验收。
+`npm run build` 不能代替 UI 验收。
 
 ---
 
-## 8. Qoder 完成时的 Issue 回报格式
+## 8. 第三方 Backend Gate
+
+新增/升级 Driver 前记录：
+
+```text
+project
+exact version/image tag
+digest when appropriate
+source URL
+license
+architecture
+capabilities
+```
+
+然后使用真实外部 client 测：
+
+```text
+start
+health
+seed/render
+client connect
+native identity mapping
+timeline/fault capability
+stop
+cleanup
+reconcile
+```
+
+**上游 main/README 出现功能不等于当前 pin 版本已支持。** Driver registry 只声明实际版本经过 integration test 的 capability。
+
+---
+
+## 9. Qoder 完成时 Issue 报告
 
 ```text
 Implementation complete.
@@ -253,11 +288,15 @@ Validation:
 - integration: ... PASS
 - Playwright: ... PASS
 
+Third-party versions/capabilities:
+- ...
+
 Chrome DevTools MCP review:
+- tool/version: ...
 - flows checked: ...
 - widths: ...
-- Console: clean / findings
-- Network: clean / findings
+- Console: ...
+- Network: ...
 - performance: ...
 - screenshots/evidence: ...
 
@@ -268,29 +307,28 @@ Docs updated:
 - ...
 ```
 
-push main 后 Issue **先不要关闭**。
+push main 后 **不要关闭 Issue**。
 
 ---
 
-## 9. 无 PR Review 方法
+## 10. 无 PR Review
 
-Reviewer 使用：
+Reviewer 以：
 
 ```text
-Base SHA ... Head/main
+Base SHA ... Head SHA
 ```
 
-审查：
+检查：
 
 1. commit range；
-2. changed file list；
-3. critical file full content；
+2. changed files；
+3. critical files full content；
 4. tests；
 5. current docs；
 6. CI；
-7. 真实浏览器/运行验证。
-
-大 Wave 不能只看 diff。
+7. third-party version/capability evidence；
+8. real browser/runtime evidence。
 
 Finding：
 
@@ -300,84 +338,78 @@ Important
 Minor
 ```
 
-Critical/Important 必须修复后才过审。
+Critical/Important 必须修复后才通过。
+
+大 Wave 不能只看 diff。
 
 ---
 
-## 10. 前端 Review 的额外检查
-
-Reviewer 不只问“像不像设计稿”，而是检查：
+## 11. Review 特别关注
 
 ### Product hierarchy
 
-- 新建是否仍以 AI/Builder 为主，而不是空 Monaco；
-- Expert YAML 是否保持高级入口；
-- 常见操作是否渐进披露；
-- 是否为高级 DSL 创建了大面积低代码表单垃圾场。
+- 新建是否 AI/Builder-first；
+- Expert YAML 是否只是高级入口；
+- Import 是否在 M5 前假暴露；
+- advanced fields 是否渐进披露。
+
+### Authoring correctness
+
+- unsaved Working Copy 可否 validate/estimate；
+- Revision 是否 immutable；
+- Compile 是否只引用 Revision；
+- Run 是否只引用 Compile；
+- semantic digest/stale contract 是否正确；
+- Builder round-trip 是否丢高级字段。
 
 ### Component discipline
 
-- 是否优先使用 shadcn 组件；
-- 是否重新发明基础控件；
-- 是否偷偷引入 Ant Design/MUI 第二套体系；
-- 是否遵循 semantic token 和 accessibility。
+- shadcn reuse；
+- semantic tokens；
+- accessibility；
+- no second generic UI framework。
 
-### AI UX
+### AI safety
 
-- assistant-ui 是否作为基础；
-- Candidate 是否经过 server validation；
-- Apply 是否只修改 Working Copy；
-- AI 是否不能直接 Save/Run/Fault/Docker；
-- stale/late response 是否安全处理（相关 Wave）。
+- assistant-ui baseline；
+- server validation；
+- provider secret server-side；
+- AI unavailable 不阻塞 non-AI core；
+- AI 不能 Save/Compile/Run/Fault/Docker。
 
-### Browser evidence
+### Driver fidelity
 
-- 实际 Chrome screenshots；
-- Console/Network；
-- 关键宽度；
-- heavy view performance；
-- Playwright regression。
+- actual pinned version；
+- normal external client；
+- no protocol reimplementation；
+- truthful capability registry。
 
 ---
 
-## 11. Review 结果写回 GitHub
+## 12. Review 结果与修复
 
-没有 PR 时，Review 写到 Wave Issue comment：
+Review 写到 Wave Issue：
 
 ```text
 Review of <base>...<head>
-
-Verdict: CHANGES REQUIRED
+Verdict: CHANGES REQUIRED / PASS
 
 Critical
-1. ...
+...
 
 Important
-1. ...
+...
 
 Minor
-1. ...
+...
 
 Verified
-- ...
+...
 ```
 
-需要跨 Wave 的大问题另建 Issue。
+修复时新的 Qoder session 读原 Issue、Review comment、current main 和相关正式文档，只修 finding，不顺便开始下一 Wave。
 
----
-
-## 12. 修复 Review
-
-新的 Qoder session 至少读：
-
-- 原 Issue；
-- Review comment；
-- 当前 main；
-- 相关产品/架构/前端设计文档。
-
-只修 finding，不顺便开始下一 Wave。
-
-修复完成记录新 Head SHA，Reviewer 审：
+修复后记录新 Head SHA，Reviewer 复核：
 
 ```text
 previous_head...new_head
@@ -387,53 +419,30 @@ previous_head...new_head
 
 ## 13. Wave 关闭条件
 
-Issue 只有在：
+只有以下都成立才关闭：
 
-- Scope 已实现；
-- tests/quality gates 全绿；
+- Scope 实现；
+- quality/integration/browser gates 通过；
 - Critical = 0；
 - Important = 0；
 - 文档与实现一致；
 - CI main 通过；
-- 必要 browser/runtime evidence 完成；
-
-之后才关闭。
+- required runtime/browser evidence 完整。
 
 ---
 
-## 14. Driver Review 特殊要求
-
-新增 Driver 必须验证：
+## 14. 推荐 Qoder 开场指令
 
 ```text
-start
-health
-seed/render
-real client can connect
-canonical ↔ native identity map
-supported timeline action
-fault capability
-stop
-cleanup
-orphan recovery
+Read README.md, product, architecture, scenario-model, backend-strategy, security, development-workflow, frontend-design/qoder-frontend-tooling when Web is touched, and the target GitHub Issue first.
+
+Implement the issue end-to-end on current main. Do not create a PR; this repo currently uses direct-main development.
+
+Preserve these contracts: unsaved Working Copy can validate/estimate; authoritative Compile requires an immutable Revision; Run requires a successful Compile Manifest; AI/Builder/Expert YAML share one semantic model; AI cannot Save/Compile/Run/Fault/Docker automatically.
+
+For UI work use UI Skills, shadcn/ui, assistant-ui, and real Chrome through Chrome DevTools MCP. Do not copy DLR UI or introduce Ant Design.
+
+Do not reimplement mature protocols. Pin and test actual third-party versions before declaring capabilities.
+
+Run all required quality, integration, Playwright and Chrome checks before pushing. Then report Base/Head SHA, exact validation, third-party versions/capabilities, Chrome evidence, known limitations and docs changed in the Issue. Do not close it before external review.
 ```
-
-还要核对：第三方版本/许可证、Docker image、ARM64、network exposure、secret logging。
-
----
-
-## 15. 推荐给 Qoder 的每波起始指令
-
-```text
-Read README.md, product, architecture, security, frontend-design (when web is touched), and the target GitHub Issue first.
-Implement the issue end-to-end on current main.
-Do not create a PR; this project currently uses direct-main development.
-For UI work, use UI Skills for design guidance, shadcn/ui as the primary component system, assistant-ui for AI UX, and Chrome DevTools MCP for real-browser inspection. Do not copy DLR UI or introduce Ant Design.
-Keep AI-first + Visual Builder as the normal authoring path; Monaco/YAML is Expert Mode.
-Do not reimplement mature protocols when a selected backend exists.
-Run all required quality, integration, Playwright and Chrome DevTools checks before pushing.
-When done, update the issue with Base SHA, Head SHA, implementation summary, exact validation results, Chrome evidence, known limitations and docs changed.
-Do not close the issue; it will be externally reviewed first.
-```
-
-这个粒度适合 Go Mode，也保留完整可审计性。
