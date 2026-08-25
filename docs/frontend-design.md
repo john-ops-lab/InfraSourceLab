@@ -1,6 +1,10 @@
 # InfraSourceLab 前端设计
 
-## 1. 目标
+> **状态：设计阶段，前端代码尚未开始。**
+>
+> 本文描述目标界面和验收方式，不代表页面、组件或浏览器测试已经存在。
+
+## 1. 前端目标
 
 前端只需要帮助用户完成：
 
@@ -13,18 +17,16 @@
 
 不要把简单工具做成复杂运维平台、数据治理后台或低代码编辑器。
 
----
+## 2. 设计方法与组件组合
 
-## 2. 设计工具与组件
-
-正式组合：
+计划使用：
 
 ```text
-UI Skills             → 页面层级与交互方法
-shadcn/ui + Tailwind  → UI 组件与视觉体系
+UI Skills             → 页面层级和交互方法
+shadcn/ui + Tailwind  → 基础组件和视觉体系
 assistant-ui          → 创建页自然语言交互
 Chrome DevTools MCP   → 真实浏览器检查
-Playwright            → 稳定回归
+Playwright            → 核心路径回归
 ```
 
 运行时建议：
@@ -41,346 +43,312 @@ Playwright
 
 明确不使用：
 
-```text
-Ant Design
-DLR CSS / Shell / Catalog
-Monaco as a product dependency
-第二套通用组件库
-大型 dashboard template
-```
+- Ant Design；
+- DLR 的 CSS、应用外壳或目录页代码；
+- Monaco 作为产品依赖；
+- 第二套通用组件库；
+- 大型仪表盘模板。
 
 首版不需要 YAML 编辑器。
-
----
 
 ## 3. 信息架构
 
 只保留四个区域：
 
 ```text
-Create
-Datasets
-Dataset Detail
-Settings / API Usage
+创建
+数据集
+数据集详情
+API 使用与设置
 ```
 
-导航可以很轻：顶部导航或简单 Sidebar，依据 UI Skills 和真实页面效果决定。
+导航可以采用轻量顶部导航或简单侧栏，由真实页面效果决定。
 
-不要预留一排没有实现的：
+不要预留未实现的运行、来源、时间线、故障、验证、代理或驱动入口。
 
-```text
-Runs
-Sources
-Timeline
-Faults
-Verification
-Agents
-Drivers
-```
+## 4. 创建页面
 
----
+创建页是第一主页面。
 
-## 4. Create 页面
-
-Create 是第一主页面。
-
-### 页面主任务
+### 主任务
 
 ```text
 描述你需要的 CMDB 配置数据
-[ assistant-ui composer ]
-[ 示例 prompt chips ]
+[ assistant-ui 输入区 ]
+[ 示例提示词 ]
 ```
 
-示例：
+示例提示词：
 
-- 两个数据中心、100 台服务器和 500 台虚拟机；
-- 50 个应用、10 个数据库以及依赖关系；
-- 一个 Kubernetes 集群、20 个节点和 200 个工作负载。
+- 生成两个数据中心、100 台服务器和 500 台虚拟机；
+- 生成 50 个应用、10 个数据库以及依赖关系；
+- 生成一个 Kubernetes 集群、20 个节点和 200 个工作负载。
 
-### AI 返回
+### AI 返回形式
 
-不要先显示原始 JSON。先显示结构化摘要：
+不先展示原始 JSON，而是展示结构化摘要：
 
 ```text
-Data set
-Medium enterprise
+数据集：中型企业
 
-CI types
-2 data centers
-30 racks
-200 physical servers
-800 virtual machines
-80 applications
+CI 类型
+2 个数据中心
+30 个机柜
+200 台物理服务器
+800 台虚拟机
+80 个应用
 
-Relations
+关系
 contains / mounted_in / runs_on / hosted_on
 
 Seed
 20260825
 ```
 
-用户可直接修改：
+用户可直接调整：
 
-- dataset name；
+- 数据集名称；
 - seed；
-- 每个类型 count；
-- 删除/增加内置类型；
-- 删除/增加简单关系。
+- 每个类型的数量；
+- 内置 CI 类型；
+- 简单关系。
 
 主操作：
 
 ```text
-[Generate Dataset]
+[生成数据集]
 ```
 
 ### AI 未配置
 
-显示清晰 fallback：
+显示清晰中文提示：
 
 ```text
-AI provider is not configured.
-Start from a template instead.
+当前没有配置 AI Provider。
+你仍然可以从内置模板开始。
 ```
 
-并提供 3～4 个模板，不要把页面变成错误死路。
+并提供少量模板，不能让页面变成错误死路。
 
----
+## 5. 数据集页面
 
-## 5. Datasets 页面
-
-简单列表或表格：
+采用简单列表或表格：
 
 ```text
-Name
-Created at
-CI count
-Relation count
+名称
+创建时间
+CI 数量
+关系数量
 Seed
-Actions
+操作
 ```
 
 需要：
 
-- 搜索名称；
+- 按名称搜索；
 - 打开详情；
-- 明确删除确认；
-- empty state；
-- loading/error。
+- 明确的删除确认；
+- 空状态；
+- 加载和错误状态。
 
 不需要：
 
-- KPI dashboard；
+- 指标仪表盘；
 - 趋势图；
 - 多维筛选器；
 - 复杂批量操作。
 
----
+## 6. 数据集详情
 
-## 6. Dataset Detail
-
-推荐顶部 summary + Tabs：
+推荐顶部摘要加页签：
 
 ```text
-Overview
-CI Data
-Relations
-API & Export
-Topology (Issue #2 only)
+概览
+CI 数据
+关系
+API 与导出
+拓扑（仅 Issue #2）
 ```
 
-## 6.1 Overview
+### 6.1 概览
 
 显示：
 
-- 名称/描述；
-- prompt；
+- 名称和描述；
+- 原始提示词；
 - seed；
-- generator version；
-- CI/关系总数；
-- 按类型数量；
-- GenerationSpec 的结构化摘要。
+- 生成器版本；
+- CI 和关系总数；
+- 各类型数量；
+- `GenerationSpec` 的结构化摘要。
 
-原始 spec 可以放在 Advanced/Sheet 中以 JSON 查看，但不是主视觉，也不要求编辑。
+原始规格可以在高级抽屉中以 JSON 查看，但不作为主视觉，也不要求直接编辑。
 
-## 6.2 CI Data
+### 6.2 CI 数据
 
-使用 shadcn Table/Data Table 组合：
+使用 shadcn 表格组合：
 
-- type filter；
-- keyword search；
-- server pagination；
-- ID、type、name、常用字段摘要；
-- 点击行后 Sheet 显示完整 attributes/tags。
+- 类型筛选；
+- 关键字搜索；
+- 服务端分页；
+- ID、类型、名称和常用字段摘要；
+- 点击行后在侧边抽屉展示完整属性和标签。
 
-不要一次加载/渲染 10k 行。
+不得一次加载或渲染 10,000 行。
 
-## 6.3 Relations
+### 6.3 关系
 
 表格字段：
 
 ```text
-relation ID
-type
-from
-from type/name
-to
-to type/name
+关系 ID
+关系类型
+起点
+起点类型和名称
+终点
+终点类型和名称
 ```
 
-支持 type/from/to filter 和分页。
+支持关系类型、起点、终点筛选和分页。
 
-## 6.4 API & Export
+### 6.4 API 与导出
 
-这是产品核心页面之一，不是设置角落。
+这是核心页面，不是隐藏在设置中的附属功能。
 
 显示：
 
-- Base URL；
-- dataset ID；
-- Bearer Token Header 提示；
-- CI endpoint；
-- Relations endpoint；
-- copyable curl；
-- JSON/CSV/XLSX download buttons；
-- API Key 只显示占位符，不回显环境变量真值。
+- 基础地址；
+- 数据集 ID；
+- Bearer Token 请求头说明；
+- CI 接口；
+- 关系接口；
+- 可复制的 curl；
+- JSON、CSV 和可选 XLSX 下载按钮；
+- API Key 只显示占位符，不回显服务端真值。
 
----
-
-## 7. Settings / API Usage
+## 7. API 使用与设置
 
 MVP 不做账号管理。
 
 页面只需要：
 
-- 当前 API Key 是否已在浏览器会话录入；
-- 输入/替换 key；
-- 清除 key；
-- AI Provider configured/unconfigured 状态；
-- API docs link；
-- local-first / bind address 提示。
+- 当前浏览器会话是否已经录入 API Key；
+- 输入或替换 Key；
+- 清除 Key；
+- AI Provider 已配置或未配置状态；
+- OpenAPI 文档入口；
+- 本地优先和监听地址提示。
 
-Key 可放 sessionStorage 或仅内存。不要写进 bundle、URL、日志或持久化普通数据库。
-
----
+Key 可以放在内存或 `sessionStorage`，不得写入构建产物、URL、日志或普通数据库。
 
 ## 8. assistant-ui 使用边界
 
-assistant-ui 只服务 Create 页：
+assistant-ui 只服务创建页：
 
-- Composer；
-- user/assistant message；
-- loading/cancel/error；
-- structured proposal card；
-- retry。
+- 输入区；
+- 用户和助手消息；
+- 加载、取消和错误；
+- 结构化规格建议卡片；
+- 重试。
 
 不建设：
 
-- 长期聊天历史产品；
+- 长期聊天历史；
 - 多会话管理；
-- attachments；
-- tool marketplace；
-- coding agent；
--复杂 Context Assistant。
+- 附件；
+- 工具市场；
+- 编码 Agent；
+- 复杂上下文助手。
 
-AI 输出最终必须经过后端 `GenerationSpec` 校验。
+AI 输出必须经过后端 `GenerationSpec` 校验。
 
----
-
-## 9. shadcn 使用规则
+## 9. shadcn/ui 使用规则
 
 优先复用：
 
 | 需求 | 组件 |
 |---|---|
-| Navigation | Sidebar / NavigationMenu |
-| Create form | Card / Field / Input / Button / Select |
-| Type counts | Table / Input / Select / Trash action |
-| Dataset list | Table / Pagination / DropdownMenu |
-| Detail | Tabs / Badge / Sheet / Separator |
-| Delete | AlertDialog |
-| Feedback | Alert / Sonner |
-| Loading | Skeleton / Spinner |
-| Empty | Empty |
-| API examples | Code block / copy Button |
+| 导航 | `Sidebar` 或 `NavigationMenu` |
+| 创建表单 | `Card`、`Field`、`Input`、`Button`、`Select` |
+| 类型数量 | `Table`、`Input`、`Select`、删除操作 |
+| 数据集列表 | `Table`、`Pagination`、`DropdownMenu` |
+| 数据集详情 | `Tabs`、`Badge`、`Sheet`、`Separator` |
+| 删除确认 | `AlertDialog` |
+| 反馈 | `Alert`、`Sonner` |
+| 加载 | `Skeleton`、`Spinner` |
+| 空状态 | `Empty` |
+| API 示例 | 代码块和复制按钮 |
 
-先查询 shadcn 当前 registry/docs，再写自定义基础控件。
+实施时先查询当前 shadcn registry 和文档，再决定是否自定义基础控件。
 
-使用统一 semantic tokens，不给每种 CI 类型设计一套彩虹色卡片。
-
----
+使用统一语义变量，不为每种 CI 类型设计一套彩虹色卡片。
 
 ## 10. 视觉原则
 
 - 首屏一眼看见“描述你要生成的数据”；
 - 主按钮明确；
-- 信息密度适中，不堆十几个统计卡片；
+- 信息密度适中，不堆叠大量统计卡片；
 - 数据页以表格和筛选为主；
 - 高级 JSON 渐进披露；
-- 状态不只靠颜色；
-- 中英文长文本不溢出；
-- 1024 宽桌面仍可操作；
-- 不强行 mobile-first。
+- 状态不能只靠颜色表达；
+- 中英文长文本不能溢出；
+- 1024 像素宽桌面仍可完成操作；
+- 不为追求移动端形式牺牲桌面数据使用效率。
 
----
+## 11. 简单拓扑
 
-## 11. 简单拓扑（Issue #2）
+简单拓扑只属于 Issue #2，且必须等待 MVP 真正实现和验证后再决定是否开发。
 
-只有 MVP 完成后才增加。
+边界：
 
-设计边界：
-
-- 从已有记录/关系绘图；
+- 从已有记录和关系绘图；
 - 默认限制可见节点数量；
-- type/relation/search filters；
+- 支持 CI 类型、关系类型和文字筛选；
 - 点击节点查看详情；
-- fit/zoom/pan；
+- 支持适配视图、缩放和平移；
 - 不编辑拓扑；
 - 不引入图数据库；
-- 不为 10k 节点强行全量渲染。
+- 不承诺一次渲染 10,000 个节点。
 
----
+## 12. 浏览器验收定义
 
-## 12. Chrome DevTools MCP 完成定义
-
-#1 至少真实检查：
+Issue #1 实现后，必须真实检查：
 
 ```text
 录入 API Key
-→ Prompt
-→ AI proposal / template fallback
-→ 调整 counts/seed
-→ Generate
-→ CI table filter/page
-→ Relation table
-→ API curl copy
-→ JSON/CSV/XLSX export
+→ 输入提示词或使用模板
+→ 查看规格建议
+→ 调整数值和 seed
+→ 生成数据集
+→ 筛选和分页查看 CI
+→ 查看关系
+→ 复制 API 示例
+→ 下载导出文件
 ```
 
-检查：
+检查范围：
 
-- 1024 / 1280 / 1440 / 1920；
+- 1024、1280、1440、1920 像素宽度；
 - Console；
 - Network；
-- loading/error/empty；
-- AI unconfigured；
-- wrong API Key 401；
-- long prompt/name；
-- 10k paginated data；
-- keyboard/focus。
+- 加载、错误和空状态；
+- AI 未配置；
+- 错误 API Key 返回 401；
+- 长提示词和长名称；
+- 万级数据分页；
+- 键盘与焦点行为。
 
-发现阻塞问题要修复，不能用 `npm run build` 替代真实页面验收。
-
----
+通过构建不等于真实页面验收。
 
 ## 13. 前端停止规则
 
-当用户可以顺畅完成：
+当用户可以顺畅完成以下路径时，就停止首版扩展：
 
 ```text
-Prompt → Generate → Browse → API/Export
+描述需求
+→ 生成
+→ 浏览
+→ 使用 API 或导出
 ```
 
-就停止首版前端扩展。
-
-不要顺手增加 dashboard、日志中心、主题市场、复杂设置、聊天历史、拓扑编辑器或任何关闭 Issue 的入口。
+不得因为页面数量少，就增加仪表盘、日志中心、主题市场、复杂设置、聊天历史、拓扑编辑器或已关闭 Issue 的入口。
