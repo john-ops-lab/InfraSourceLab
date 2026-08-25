@@ -46,7 +46,7 @@ https://github.com/shadcn-ui/ui
 - 实现常见控件前先查询 shadcn/ui 当前组件和用法；
 - 优先组合现有组件，再考虑自定义基础控件；
 - 不得同时引入 Ant Design 或第二套大型通用组件库；
-- 不复制 DLR 的 CSS、应用外壳或组件体系；
+- 不复制其他项目的 CSS、应用外壳或组件体系；
 - 首次初始化后固定 `components.json`、Tailwind v4 主题、基础色、图标库和导入别名，不反复重建第二套预设。
 
 ### 1.3 Chrome DevTools MCP
