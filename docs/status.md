@@ -43,6 +43,15 @@ GitHub Actions
 → 简单可用界面
 ```
 
+已经固定的关键设计：
+
+- `POST /api/v1/specs/from-prompt` 只生成并校验规格建议；
+- `POST /api/v1/datasets` 只接收用户确认后的规格并创建数据集；
+- 关系使用 `strategy=balanced|random_seeded` 和 `coverage=from|to`；
+- CI 搜索使用受控 `search_text`；
+- Issue #1 创建页使用一次性提示词到规格建议，不建设多轮聊天；
+- SQLite 使用 `PRAGMA user_version = 1`，不兼容版本明确提示备份和重建，不在 MVP 建设自动迁移链。
+
 当前状态：
 
 ```text
@@ -60,8 +69,9 @@ GitHub Actions
 
 - 简单拓扑；
 - 四种基础数据质量规则；
-- CMDB 认证接口读取或导入示例；
-- 数据库模式迁移策略（SQLite schema 版本与升级迁移）。
+- CMDB 认证接口读取或导入示例。
+
+Issue #2 **不包含**数据库模式迁移、自动升级、多轮 AI 聊天或后台任务系统。
 
 ### Issues #3～#8：不计划实施
 
