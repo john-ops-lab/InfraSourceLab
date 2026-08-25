@@ -1,665 +1,371 @@
-# 工具全景调研：InfraSourceLab 可复用生态
+# 配置数据生成与数据源模拟工具全景调研
 
-> 调研基线：2026-08-24。本文的目标不是列一个“Awesome Mock”清单，而是回答：**InfraSourceLab 每类数据源最应该复用哪个现有轮子、复用到什么程度、哪些工具不应成为默认依赖。**
+> 调研基线：2026-08-24。
 >
-> 开源项目状态、许可证和商业策略会变化。真正加入 Driver 前必须重新核验 release、license、image 与 ARM64 支持。
+> **本文是历史研究材料，不是当前开发清单。** InfraSourceLab 当前仍处于设计阶段，Issue #1 不接入本文中的协议模拟器或真实服务编排。
 
-## 1. 结论先行
+## 1. 调研结论
 
-目前没有发现一个成熟开源项目能完整覆盖：
+目前没有发现一个成熟、开源、真正“万能”的 IT 配置数据源模拟器，可以同时做到：
+
+- 用自然语言描述企业 IT 环境；
+- 生成统一且可重复的 CMDB 配置数据；
+- 模拟 REST、vCenter、Kubernetes、SNMP、Redfish、云平台、数据库、消息队列等多种来源；
+- 保持同一对象在不同来源中的身份和关系一致；
+- 对采集结果自动验证。
+
+市场上存在的是很多成熟拼图，而不是一个完整产品。
+
+因此，当前 InfraSourceLab 不应尝试把所有拼图组装成平台。MVP 只做最有价值的公共部分：
 
 ```text
-统一 IT Truth
-+ vCenter/K8s/SNMP/Redfish/CLI/NETCONF/Cloud/DB/API/File
-+ 多源不一致
-+ 生命周期
-+ 故障
-+ Ground Truth
-+ 下游验证
+自然语言或模板
+→ GenerationSpec
+→ 确定性 CI 与关系
+→ 认证 REST API
+→ 文件导出
 ```
 
-但几乎每个协议领域都有成熟局部轮子。因此合理路线是：
+## 2. 通用 HTTP、API 与契约 Mock
 
-> **InfraSourceLab 做“Scenario Compiler + Truth Graph + Projection + Driver Orchestration + Verification”，底层尽量复用成熟 Simulator 或真实服务。**
+### Microcks
 
-这不是妥协，反而是项目最有价值的边界。
+特点：
 
----
+- 支持 OpenAPI、AsyncAPI、GraphQL、gRPC、SOAP、Postman 等契约；
+- 可以根据契约生成 Mock；
+- 支持异步消息场景；
+- 有结构化 AI 生成思路。
 
-## 2. 评估维度
+适合未来：从已有 API 契约快速生成数据源。
 
-每个候选按以下维度判断：
+不适合当前直接作为底座的原因：部署和领域模型较重，远超当前简单 CMDB 数据生成目标。
 
-- 是否真正提供外部可连接 endpoint，而不只是单元测试 mock；
-- 协议保真度；
-- 是否 headless / Docker / 自动化友好；
-- 是否能 seed/populate；
-- 是否支持动态状态；
-- 是否支持故障；
-- 是否支持 record/replay；
-- 许可证；
-- 社区/维护状态；
-- ARM64/Mac 开发可行性；
-- 与 ISL Truth Projection 的集成复杂度。
+### Mockoon
 
-决策标签：
+特点：
 
-- **DEFAULT**：计划做正式 Driver；
-- **OPTIONAL**：有价值但不是基础安装依赖；
-- **REFERENCE**：借鉴设计，不直接依赖；
-- **EXCLUDE/DEFER**：当前明确不作为基础方案。
+- 桌面界面、命令行和 Docker；
+- REST 路由和动态模板；
+- 延迟、错误、代理等常用能力；
+- 上手成本低。
 
----
+适合未来：快速暴露普通资产 REST API。
 
-# 3. 通用 API / Service Virtualization
+### WireMock
 
-## 3.1 Microcks — OPTIONAL / ARCHITECTURE REFERENCE
+特点：
 
-- Repo: https://github.com/microcks/microcks
-- Website: https://microcks.io/
-- CNCF Incubating（2026-05 升级）；
-- 支持 OpenAPI、AsyncAPI、gRPC/Protobuf、GraphQL、SOAP/WSDL、Postman 等；
-- Async Minion 覆盖 Kafka、MQTT、AMQP、WebSocket、Pub/Sub 等；
-- contract testing；
-- AI Copilot 能根据契约生成 realistic/schema-valid examples；
-- Apache-2.0。
+- HTTP Mock、代理和录制；
+- 请求匹配能力成熟；
+- 支持延迟和故障响应；
+- Java 生态成熟。
 
-**非常值得借鉴：** artifact importer、内部统一 domain model、AI 严格结构化输出、Minion 异步协议扩展。
+适合未来：需要较复杂请求匹配和录制回放的 HTTP 适配器测试。
 
-**不作为 MVP 底座：** Spring Boot + Angular + MongoDB + Keycloak + Minions 对个人本地 Lab 太重，而且它解决 API mocking，不解决 infrastructure Truth Graph。
+### Prism
 
-结论：后期 `microcks` Driver；不 fork。
+特点：
 
-## 3.2 Mockoon CLI — DEFAULT 通用 REST Backend
+- 从 OpenAPI 直接启动 Mock Server；
+- 契约驱动；
+- 适合轻量开发测试。
 
-- Repo: https://github.com/mockoon/mockoon
-- CLI: https://mockoon.com/cli/
-- MIT；
-- OpenAPI import；
-- dynamic Handlebars templates；
-- response rules；
-- Faker/seed；
-- JSON databases；
-- proxy；
-- logs/admin API；
-- Docker/headless。
+适合未来：已有 OpenAPI 的数据源。
 
-非常适合 `Truth Projection → Mockoon config → container`。
+### Hoverfly
 
-## 3.3 Prism — OPTIONAL contract-only Backend
+特点：
 
-- Repo: https://github.com/stoplightio/prism
-- OpenAPI v2/v3；
-- mock + request validation + proxy；
-- 能从 examples/schema 生成 response；
-- Apache-2.0。
+- 服务虚拟化；
+- 代理、采集、模拟和差异化响应；
+- 适合录制回放。
 
-优点是契约驱动很纯；短板是本身不是有状态数据源平台。
+适合未来：用户能短期访问真实沙箱并进行合法脱敏采集的场景。
 
-## 3.4 Hoverfly — DEFAULT/OPTIONAL Record-Replay Backend
+### MockForge
 
-- Repo: https://github.com/SpectoLabs/hoverfly
-- Docs: https://docs.hoverfly.io/
-- Apache-2.0；
-- Capture / Simulate / Spy；
-- stateful sequence capture/replay；
-- latency/random failure/rate-limit 类行为；
-- simulation 可导出。
+特点：
 
-适合真实 API 很难模拟时的 capture/replay 路径。
+- 自然语言生成 Mock 的理念接近最初设想；
+- 涉及 REST、GraphQL、gRPC、WebSocket、消息协议和故障；
+- 强调插件和扩展。
 
-## 3.5 WireMock — OPTIONAL
+风险：社区成熟度和长期维护验证不足，不适合直接成为项目长期底座。
 
-- Repo: https://github.com/wiremock/wiremock
-- Website: https://wiremock.org/
-- 老牌成熟 HTTP API mocking；
-- standalone JAR/Docker；
-- request matching、stateful scenarios、proxy/recording、faults。
+## 3. 假数据与 Schema 驱动生成
 
-能力很强，但 JVM 方案比 Mockoon CLI 更重。可做 alternate driver，不必 MVP 同时支持。
+### Faker
 
-## 3.6 MockServer — OPTIONAL
+特点：
 
-- Website: https://www.mock-server.com/
-- Repo: https://github.com/mock-server/mockserver
-- HTTP/HTTPS、proxy、record/replay；
-- 当前版本还覆盖更现代 HTTP/gRPC 场景；
-- Java 生态，功能较重。
+- 生态成熟；
+- 支持姓名、公司、地址、时间等通用字段；
+- 易于通过固定 seed 实现可重复生成。
 
-适合用户已有 MockServer 经验时，不作为默认。
+适合当前 MVP：作为字段生成基础库之一。
 
-## 3.7 Imposter — OPTIONAL / STRONG REFERENCE
+### Mimesis
 
-- Repo: https://github.com/imposter-project/imposter
-- Website: https://www.imposter.sh/
-- REST/OpenAPI、SOAP/WSDL、gRPC，以及 Salesforce/HBase 等 plugin；
-- template、store、capture/proxy、scripting；
-- 多用途 service simulator。
+特点：
 
-它的 plugin 模型值得 Driver Registry 设计参考。
+- Python 生态；
+- 数据类型丰富；
+- 适合批量生成。
 
-## 3.8 Mockintosh — REFERENCE / OPTIONAL
+适合当前 MVP：与 Faker 二选一或合理分工，实施时比较性能、字段覆盖和许可证。
 
-- Repo: https://github.com/up9inc/mockintosh
-- 多 service virtualization；
-- HTTP + async actors，曾覆盖 Kafka/RabbitMQ/Redis 等；
-- 模板、动态配置、UI/API。
+### JSON Schema Faker
 
-可以借鉴 declarative multi-service configuration，但不建议把项目建立在其维护节奏之上。
+特点：
 
-## 3.9 mountebank — REFERENCE
+- 根据 JSON Schema 生成合规样例；
+- 支持 seed；
+- 适合契约数据。
 
-- Repo: https://github.com/bbyars/mountebank
-- HTTP/TCP generalized test doubles；
-- 对“协议还没有专用模拟器”时的 raw TCP 思路有参考价值。
+适合未来：自定义类型或 OpenAPI Schema 驱动数据生成。
 
-## 3.10 Karate Mock Server — REFERENCE
+## 4. 虚拟化与容器
 
-- Repo: https://github.com/karatelabs/karate
-- stateful mock、Java/Netty、测试 DSL 集成强。
+### govmomi/vcsim
 
-更像测试框架能力，不适合作为 ISL 通用运行面默认后端。
+特点：
 
-## 3.11 Pact Mock Server — EXCLUDE AS GENERAL BACKEND
+- 模拟 vCenter 和 ESXi 对象；
+- 使用真实 vSphere API；
+- 支持数据中心、集群、主机、虚拟机、存储和网络对象；
+- 可以作为客户端集成测试环境。
 
-Pact 的核心是 consumer-driven contract testing。官方也不把 Pact mock server 定位成通用 service virtualization。ISL 可未来导入 Pact contract，但不应拿 Pact server 当万能数据源模拟器。
+未来价值很高，但不属于当前 MVP。
 
----
+### KWOK
 
-# 4. 数据生成 / Synthetic Data
+特点：
 
-## 4.1 Mimesis — DEFAULT CORE GENERATOR
-
-- Repo: https://github.com/lk-geimfari/mimesis
-- Docs: https://mimesis.name/
-- MIT；
-- Python；
-- 多 locale；
-- Schema/DataProvider；
-- 可 seed；
-- relational schema / foreign-key 风格能力；
-- custom provider。
-
-为什么比“全靠 LLM 生成 10 万条记录”合理：快、稳定、可 seed、无需网络、成本固定。
-
-## 4.2 Faker (Python) — SUPPLEMENTAL
-
-- Repo: https://github.com/joke2k/faker
-- 成熟度和 provider 生态非常强；
-- Python；
-- seed 支持。
-
-注意：Faker 文档长期提醒 generated results 可能随版本变化，因此 ISL 若使用必须 pin 精确版本并写入 Compile Manifest。
-
-## 4.3 json-schema-faker — OPTIONAL CONTRACT GENERATOR
-
-- Repo: https://github.com/json-schema-faker/json-schema-faker
-- JSON Schema 驱动；
-- seeded PRNG；
-- format/ref support；
-- JS/TS 生态。
-
-对于用户导入 JSON Schema/OpenAPI 很有用。但 ISL Python core 不必为了它常驻 Node 依赖；可由 Prism/Mockoon 或独立 helper driver 使用。
-
-## 4.4 SDV — REFERENCE / OPTIONAL
-
-- Repo: https://github.com/sdv-dev/SDV
-- 面向统计/ML synthetic tabular/multi-table 数据。
-
-对“拟真业务数据分布”强，但 CMDB 基础设施数据更重规则、关系和确定性，不需要在 Core 引入 ML 合成框架。
-
-## 4.5 Neosync — EXCLUDE/ARCHIVED REFERENCE
-
-曾经很适合 database anonymization/synthetic workflow，但其开源 repo 已在 2025 年归档。只借鉴数据 anonymization 思路。
-
----
-
-# 5. VMware / Virtualization
-
-## 5.1 govmomi `vcsim` — DEFAULT
-
-- Repo: https://github.com/vmware/govmomi
-- Apache-2.0；
-- vSphere SDK simulator；
-- 任意真实 vSphere client 可以连接；
-- Datacenter/Cluster/Host/VM/Datastore/Network 等 inventory；
-- property mutation；
-- delay/per-method delay/jitter。
-
-这是 vCenter Driver 的首选，自己重新实现 vSphere API 没有意义。
-
-## 5.2 libvirt test driver — OPTIONAL
-
-- Docs: https://libvirt.org/drvtest.html
-- `test:///default` 或 custom XML；
-- per-process in-memory fake hypervisor；
-- 可以让真实 libvirt client 连接。
-
-适合做“非 VMware 虚拟化 API”低成本 fixture。
-
-## 5.3 OpenStack SDK/Nova fakes — REFERENCE
-
-OpenStack 项目内部有大量 fake/mocking facility，但它们更多是 OpenStack 自身单元测试用 helper，并不是一个轻量 turnkey OpenStack API emulator。
-
-策略：
-
-- 若只测某几个 OpenStack REST endpoint，优先 contract mock；
-- 若需要高保真，后期部署真实最小 OpenStack/devstack 或外部 lab；
-- 不在 Core 自研 OpenStack API。
-
----
-
-# 6. Kubernetes / Container
-
-## 6.1 KWOK — DEFAULT
-
-- Repo: https://github.com/kubernetes-sigs/kwok
 - Kubernetes SIG 项目；
-- 真实 Kubernetes API 语义；
-- 可低资源模拟大量 Node/Pod；
-- Stage 支持 selector/weight/delay/patch/event/delete/apply。
+- 可以轻量模拟大量节点和 Pod；
+- 客户端仍通过 Kubernetes API；
+- 适合规模和状态测试。
 
-ISL Kubernetes 模拟的首选。
+未来适合测试 DLR Kubernetes 适配器，不需要现在接入。
 
-## 6.2 Kubernetes fake client — TEST-ONLY
+### libvirt 测试驱动
 
-client-go/controller-runtime fake clients 适合 ISL 自己的单元测试，但它们不是给 DLR 连接的外部集群 endpoint，不能代替 KWOK。
+特点：
 
-## 6.3 kind / k3d / k3s — REAL SERVICE OPTION
+- 官方提供 `test:///default`；
+- 不需要真实 Hypervisor；
+- 适合 libvirt 客户端测试。
 
-如果需要真实 scheduler/controller/networking，而不是只需要 API/resource lifecycle，可启动轻量真实集群。它们属于 L3/L4 选项，不作为“大量 Node/Pod”默认方式。
+## 5. 硬件与网络协议
 
----
+### snmpsim
 
-# 7. SNMP / BMC / Hardware
+特点：
 
-## 7.1 snmpsim — DEFAULT
+- 支持 SNMP v1、v2c、v3；
+- 可以从真实设备采集数据后回放；
+- 支持大量代理；
+- 支持动态值、延迟和错误。
 
-- Repo: https://github.com/etingof/snmpsim
-- BSD 系许可证；
-- v1/v2c/v3；
-- 多 Agent；
-- record real agents；
-- variation modules；
-- numeric/time变化；
-- SQL/Redis source；
-- delay；
-- protocol errors；
-- trap/inform；
-- multiplex time snapshots。
+未来测试网络设备、服务器和存储采集时优先复用。
 
-几乎完美覆盖 SNMP 采集器测试。
+### DMTF Redfish Interface Emulator
 
-## 7.2 DMTF Redfish Interface Emulator — DEFAULT
+特点：
 
-- Repo: https://github.com/DMTF/Redfish-Interface-Emulator
-- BSD-3-Clause；
-- static + dynamic Redfish resources；
-- Docker；
-- GET/PATCH/POST/DELETE；
-- `infragen` count/populate；
-- Chassis/System/CPU/Memory/Storage/NIC 等。
+- 官方 Redfish 生态工具；
+- 支持静态和动态资源；
+- 可模拟服务器硬件管理接口。
 
-比单纯 static Redfish mockup 更适合 CMDB lifecycle。
+未来测试 BMC 或 Redfish 适配器时优先复用。
 
-## 7.3 DMTF Redfish Mockup Server — OPTIONAL
+### FakeNOS
 
-适合快速把标准/厂商 Redfish mockup directory 直接暴露为 REST endpoint。对于只读采集器非常轻量；动态行为弱于 Interface Emulator。
+特点：
 
-## 7.4 OpenIPMI `ipmi_sim` — CANDIDATE / DEFER
+- 模拟网络设备 SSH 命令行；
+- 支持多厂商风格；
+- 适合常见 `show` 命令测试。
 
-OpenIPMI 带 BMC/IPMI simulator，可模拟 sensors/SDR/power/events 等。价值很高，但在做正式 Driver 前需要重新核验当前构建、镜像、许可证和 ARM64 体验。
+### scrapli-replay
 
----
+特点：
 
-# 8. Network CLI / Network Management
+- 从真实网络设备会话录制并回放；
+- 适合授权环境下的脱敏测试。
 
-## 8.1 FakeNOS — DEFAULT
+### Netopeer2 + sysrepo
 
-- Repo: https://github.com/fakenos/fakenos
-- MIT；
-- Python；
-- SSH server；
-- 模拟多种 network OS command interaction；
-- inventory 配置。
+特点：
 
-适合 DLR 测试 CLI 采集，而无需厂商镜像。
+- 提供标准 NETCONF 和 YANG 能力；
+- 使用真实服务而不是假协议；
+- 适合配置管理测试。
 
-## 8.2 scrapli-replay — OPTIONAL RECORD/REPLAY
+## 6. 云与对象存储
 
-- Repo: https://github.com/scrapli/scrapli_replay
-- collector + semi-interactive SSH server；
-- 从真实网络设备录制 command/response；
-- replay server 使用测试凭据而不是原设备凭据。
+### Moto
 
-非常适合把一次真实实验设备采集转成长期可重放 fixture。
+特点：
 
-## 8.3 Netopeer2 + sysrepo — DEFAULT FOR NETCONF
+- 覆盖大量 AWS API；
+- 支持 Python 测试和独立服务；
+- 适合 SDK 端点替换。
 
-- Netopeer2: https://github.com/CESNET/netopeer2
-- sysrepo: https://github.com/sysrepo/sysrepo
-- 真实 NETCONF server + YANG datastore；
-- libyang/libnetconf2；
-- 支持装载 YANG model。
+未来测试 AWS 采集时优先考虑。
 
-比自研 NETCONF server 强得多。
+### Azurite
 
-## 8.4 gNMIc / gNMI ecosystem — REFERENCE / LATER
+特点：
 
-`gnmic`/相关 cache/server 可以提供 gNMI Get/Set/Subscribe 生态能力，但它们并不等于通用厂商 NOS 模拟器。未来若 DLR 有 gNMI Adapter 再做专门验证。
+- Azure 官方存储模拟器；
+- 覆盖 Blob、Queue、Table 等存储能力。
 
-## 8.5 containerlab — OPTIONAL HIGH FIDELITY
+边界：不能代表完整 Azure 控制面。
 
-- Website: https://containerlab.dev/
-- Repo: https://github.com/srl-labs/containerlab
-- declarative YAML topology；
-- 管理网络 + p2p links；
-- 管理容器/NOS lifecycle；
-- 支持大量 device kinds。
+### fake-gcs-server
 
-非常强，但它需要真正的 NOS/container image，某些 image 受厂商许可限制。ISL 只生成 topology/管理 lifecycle，不提供受限镜像。
+特点：
 
-## 8.6 vrnetlab — OPTIONAL COMPONENT
+- 提供 Google Cloud Storage 兼容接口；
+- 适合对象存储客户端测试。
 
-将 VM-based router 封装进 container runtime，是 containerlab/GNS3 高保真的辅助路径。镜像构建通常需要用户拥有厂商镜像。
+边界：不能代表完整 GCP。
 
-## 8.7 GNS3 — OPTIONAL / HEAVY
+## 7. 真实轻量服务
 
-成熟网络仿真平台，可运行 Docker/QEMU/VM。适合高级实验，不适合默认个人本地 CMDB fixture。
-
-## 8.8 EVE-NG Community — DEFER
-
-2026 年社区版本生命周期/商业产品边界发生变化，不把它作为本开源项目核心依赖。
-
-## 8.9 rconfig-sim 等高密度 Cisco SSH simulator — REFERENCE
-
-这类项目证明一台机器可以承载大量 SSH device fixture，可借鉴 scale/metrics/fault 设计；但产品过于 vendor/场景特定，不作为统一 backend。
-
----
-
-# 9. Cloud Emulation
-
-## 9.1 Moto — DEFAULT AWS
-
-- Repo: https://github.com/getmoto/moto
-- AWS mock 生态成熟；
-- Python library + standalone server；
-- 外部 boto3/SDK client 可连接；
-- Apache-2.0。
-
-适合 ISL：Truth Projection → 调 Moto API 创建 resources → DLR 使用 AWS SDK 采集。
-
-## 9.2 LocalStack — OPTIONAL USER-PROVIDED
-
-- 原 `localstack/localstack` 开源 repo 于 2026-03-23 archived；
-- 新统一 image 要求账号/auth token；
-- Hobby 为 non-commercial，商业使用有付费 plans。
-
-因此不能把它作为“用户 clone repo 就能永久免费跑”的默认依赖。可做 external integration。
-
-## 9.3 Azurite — DEFAULT AZURE STORAGE ONLY
-
-- Microsoft 官方 Azure Storage emulator；
-- Blob / Queue / Table；
-- Docker/npm；
-- 不等于整个 Azure management plane。
-
-ISL UI/文档必须把 capability 说准确。
-
-## 9.4 fake-gcs-server — DEFAULT GCS
-
-- Repo: https://github.com/fsouza/fake-gcs-server
-- Go/Docker；
-- local GCS-compatible endpoint；
-- 可 preload object data。
-
-适合对象存储采集。
-
-## 9.5 MinIO — NOT DEFAULT S3 EMULATOR
-
-历史上常用于 S3-compatible local object storage，但项目开源/发行状态在近年有明显变化。ISL 已有 Moto 可提供 AWS/S3 fixture，因此没有必要把 MinIO 作为核心依赖；用户仍可把自己已有 S3-compatible endpoint 接进来。
-
----
-
-# 10. 数据库 / Cache / MQ / Files
-
-这里最大的“轮子复用”是：**不要找 Fake，直接跑真的。**
-
-## 10.1 Relational DB
-
-推荐 real-service drivers：
-
-- PostgreSQL；
-- MySQL/MariaDB；
-- 后期可支持用户提供 Oracle Free / SQL Server Developer 容器，但注意镜像条款和架构限制。
-
-ISL 负责：DDL + deterministic rows + auth + endpoint + timeline mutations。
-
-## 10.2 Redis
-
-直接真实 Redis。无需模拟 RESP。
-
-## 10.3 Kafka
-
-优先 Apache Kafka 官方容器/发行方案。不要为了本地轻量而默认选一个许可证策略可能变化的第三方 Kafka-compatible broker。
-
-## 10.4 RabbitMQ
-
-真实 RabbitMQ；生产协议/queue/exchange semantics 比自己 mock 更可靠。
-
-## 10.5 MQTT
-
-真实 Eclipse Mosquitto；ISL 生成 topics/messages/retained data 和 credential。
-
-## 10.6 SFTP/SSH File
-
-真实 OpenSSH-based container。Driver 创建目录树、权限、文件内容和测试用户。
-
-镜像要由项目显式 pin 并做 license/security review；不要默认使用多年不维护的随机 Docker Hub image。
-
-## 10.7 LDAP
-
-真实 OpenLDAP 作为目录数据 fixture。以后如果需要 Active Directory 特有行为，再评估 Samba AD DC，而不是在第一版自己模拟 LDAP/AD。
-
----
-
-# 11. 真实 CMDB / Source-of-Truth 应用作为数据源
-
-## 11.1 NetBox — DEFAULT LATER SOURCE PACK
-
-- Repo: https://github.com/netbox-community/netbox
-- Demo data: https://github.com/netbox-community/netbox-demo-data
-- REST API + OpenAPI；
-- DCIM/IPAM/virtualization/circuits 等。
-
-这是极佳的“真实应用 API”测试源。ISL 不是 mock NetBox，而是自动起真实 NetBox、seed Truth Projection。
-
-## 11.2 Nautobot — OPTIONAL
-
-Network Source of Truth，REST/GraphQL/plugin 生态丰富。与 NetBox 重叠，优先级低一档，等真实需求出现再做 Source Pack。
-
-## 11.3 Ralph — OPTIONAL
-
-开源 DCIM/CMDB/asset management，适合作为另一个企业应用 source。先评估启动复杂度和 ARM64。
-
-## 11.4 iTop — OPTIONAL / LICENSE CAUTION
-
-CMDB/ITSM 能力强，但 AGPL 和应用体量意味着只适合 external/container integration，不能随意复制源码进 ISL。
-
-## 11.5 ServiceNow / 商业 ITSM / 云厂商管理平台 — CONTRACT/CAPTURE
-
-没有合法可自由分发的完整模拟器时：
+以下服务通常直接启动真实容器比自行编写 Mock 更合理：
 
 ```text
-OpenAPI/known schema → contract mock
-或
-user-owned sandbox → sanitized capture/replay
+PostgreSQL
+MySQL / MariaDB
+Redis
+Apache Kafka
+RabbitMQ
+Eclipse Mosquitto
+OpenSSH SFTP
+OpenLDAP
+CoreDNS
+NetBox
 ```
 
-不要在 ISL 里复制商业 API 私有实现或样本凭据。
+理由：
 
----
+- 协议实现已经成熟；
+- 客户端兼容性更真实；
+- 部署成本通常可控；
+- 自研 Mock 容易长期偏离真实行为。
 
-# 12. Chaos / Fault Injection
+## 8. 网络故障与混沌
 
-## 12.1 Toxiproxy — DEFAULT
+### Toxiproxy
 
-- Repo: https://github.com/Shopify/toxiproxy
-- HTTP control API；
-- latency/jitter；
-- down；
-- bandwidth；
-- slow close；
-- timeout；
-- reset peer；
-- packet loss；
-- data limiting/slicing；
-- Prometheus metrics。
+特点：
 
-对于所有 TCP source，它提供统一的 transport fault layer。
+- 延迟；
+- 超时；
+- 带宽限制；
+- 连接重置；
+- 数据包和连接级故障。
 
-## 12.2 Pumba / Chaos tooling — REFERENCE
+未来若需要传输层故障，优先把 Toxiproxy 放在来源服务前面，不让每个来源各自实现网络故障。
 
-容器 kill/network chaos 工具可用于后期 run resilience，但 MVP 更需要 deterministic endpoint faults；Toxiproxy 更容易精确验证。
+当前 MVP 不需要故障注入。
 
----
+## 9. CMDB、DCIM 与事实来源数据
 
-# 13. 测试容器编排工具
+### NetBox Demo Data
 
-## 13.1 Testcontainers — TEST REFERENCE, NOT PLATFORM RUNTIME
+NetBox 社区提供演示数据，可参考：
 
-Testcontainers 很适合 ISL 自己的 automated integration tests：pytest 启动 PostgreSQL/Redis/Moto 等。
+- 站点；
+- 机柜；
+- 设备；
+- 虚拟机；
+- IP；
+- 网络关系。
 
-但产品运行时需要：
+适合借鉴数据结构和真实感，不应直接复制成 InfraSourceLab 的固定模型。
 
-- 一次 Run 存活数小时；
-- UI Start/Stop；
-- 恢复状态；
-- lifecycle/timeline；
-- 多 source；
-- GC。
+### NetBox
 
-因此 runtime 仍应有 Lab Agent，而不是把 Testcontainers 当产品 orchestration API。
+未来若要测试 NetBox 采集，优先启动真实 NetBox 并通过官方接口写入数据。
 
-## 13.2 Docker Compose — DEPLOYMENT
+### ServiceNow、Jira Assets 等商业产品
 
-Compose 用来启动 **ISL 自己**（Control/Agent/Postgres/Web），而 Lab Run 内动态 source 数量由 Agent 管理。不要为每个 Run 修改主 `docker-compose.yml`。
+优先顺序：
 
----
+1. 官方开发实例或沙箱；
+2. OpenAPI 或文档契约；
+3. 合法录制和脱敏回放；
+4. 只实现被真实测试阻断的极少接口。
 
-# 14. 可借鉴但不应该 fork 的“万能 Mock”方向
+不建设完整“假 ServiceNow”。
 
-## MockForge
+## 10. 对当前 MVP 可直接采用的轮子
 
-- Repo: https://github.com/SaaSy-Solutions/mockforge
-- Rust workspace；
-- HTTP/WS/gRPC/GraphQL；
-- data generation；
-- recorder；
-- chaos；
-- observability；
-- WASM/plugin system；
-- datasource plugin contract。
+真正适合 Issue #1 的主要是：
 
-它的产品理念与“万能模拟器”最接近，也有非常值得抄作业的分层，但社区成熟度远低于 Microcks/WireMock 等，而且核心问题仍然围绕 service mocking，不是 CMDB multi-source Truth。
+| 需求 | 优先工具 |
+|---|---|
+| Python Web API | FastAPI、Pydantic、SQLAlchemy |
+| 默认持久化 | SQLite |
+| 通用字段生成 | Faker 或 Mimesis |
+| 稳定 UUID 和摘要 | Python 标准库 `uuid`、`hashlib` |
+| IP 生成 | Python 标准库 `ipaddress` |
+| 前端 | React、TypeScript、Vite |
+| 组件 | shadcn/ui、Tailwind CSS |
+| AI 创建体验 | assistant-ui |
+| 浏览器验证 | Chrome DevTools MCP、Playwright |
+| JSON、CSV | Python 标准库和成熟库 |
+| XLSX | 低成本时使用成熟 XLSX 库 |
 
-结论：**深入读源码，借架构，不 fork。**
+这些轮子足够完成当前产品目标。
 
----
+## 11. 当前不应接入的轮子
 
-# 15. 还需要关注的扩展候选
+Issue #1 不应接入：
 
-这些不是 MVP，但 Driver Registry 应保证未来能接：
+- Microcks 运行平台；
+- MockForge 运行平台；
+- vcsim；
+- KWOK；
+- snmpsim；
+- Redfish 模拟器；
+- Moto；
+- Azurite；
+- NetBox；
+- Toxiproxy；
+- containerlab；
+- 数据库、消息队列和目录服务编排。
 
-### Infrastructure
-- Docker Engine API fixture；
-- Proxmox API（contract/capture 或用户 lab）；
-- OpenStack；
-- Ceph；
-- storage vendor APIs；
-- DNS/IPAM systems；
-- DHCP；
-- VMware NSX/vSAN（需要真实或 contract fixture）。
+它们可能在未来有价值，但现在接入会明显扩大范围和维护成本。
 
-### Network
-- RESTCONF；
-- gNMI；
-- LLDP/CDP topology fixtures；
-- network controller APIs（Cisco/Aruba/etc.）；
-- firewall/load balancer APIs。
+## 12. 选型原则
 
-### Observability / Ops
-- Prometheus API；
-- Alertmanager；
-- Grafana API；
-- Elasticsearch/OpenSearch；
-- monitoring products via contract/capture。
+未来每次考虑新工具时，按以下顺序判断：
 
-### Enterprise
-- LDAP/AD；
-- DNS；
-- IPAM；
-- ITSM；
-- asset/procurement databases；
-- spreadsheets；
-- message bus；
-- object stores。
+1. 是否解决已经出现的真实问题？
+2. 是否比通用 REST 或文件接口更必要？
+3. 是否已有成熟项目可直接复用？
+4. 能否通过很薄的适配实现？
+5. 许可证、维护状态和 ARM64 支持是否可接受？
+6. 是否会把项目变成长期运行平台？
+7. 是否可以独立关闭或删除而不影响核心生成器？
 
-这些都能通过现有五种 backend mode（artifact/contract/protocol/real/replay）扩展，不需要改变 Core。
+## 13. 最终结论
 
----
+当前最合理的产品不是“万能协议模拟器”，而是一个简单、确定、可立即调用的 CMDB 数据生成工具。
 
-# 16. 最终选型地图
+先完成：
 
 ```text
-                         InfraSourceLab Core
-                Scenario / Truth / Projection / Verify
-                                │
-                  Driver Registry + Capability
-                                │
- ┌──────────────┬───────────────┼──────────────┬──────────────┐
- │ Artifact     │ Contract/API  │ Protocol     │ Real Service │ Replay
- │              │               │ Emulator     │              │
- │ JSON         │ Mockoon       │ vcsim        │ PostgreSQL   │ Hoverfly
- │ YAML         │ Prism         │ KWOK         │ MySQL        │ scrapli
- │ CSV/xlsx     │ Microcks opt. │ snmpsim      │ Redis        │ imports
- │              │               │ Redfish      │ Kafka        │
- │              │               │ FakeNOS      │ MQTT         │
- │              │               │ Netopeer2    │ SFTP/LDAP    │
- │              │               │ Moto/Azurite │ NetBox       │
- └──────────────┴───────────────┴──────────────┴──────────────┘
-                                │
-                         Toxiproxy Fault Layer
+自然语言或模板
+→ 结构化规格
+→ CI 与关系
+→ 认证 API
+→ 文件导出
 ```
 
-真正应该自研的是中间横向能力，而不是底下每个方框。
-
----
-
-# 17. 主要参考链接
-
-- Microcks: https://microcks.io/ / https://github.com/microcks/microcks
-- Mockoon: https://mockoon.com/ / https://github.com/mockoon/mockoon
-- Prism: https://github.com/stoplightio/prism
-- Hoverfly: https://docs.hoverfly.io/ / https://github.com/SpectoLabs/hoverfly
-- WireMock: https://wiremock.org/
-- MockServer: https://www.mock-server.com/
-- Imposter: https://www.imposter.sh/
-- MockForge: https://github.com/SaaSy-Solutions/mockforge
-- Mimesis: https://mimesis.name/
-- Faker: https://github.com/joke2k/faker
-- govmomi/vcsim: https://github.com/vmware/govmomi
-- KWOK: https://github.com/kubernetes-sigs/kwok
-- snmpsim: https://github.com/etingof/snmpsim
-- Redfish Interface Emulator: https://github.com/DMTF/Redfish-Interface-Emulator
-- FakeNOS: https://github.com/fakenos/fakenos
-- scrapli-replay: https://scrapli.github.io/scrapli_replay/
-- Netopeer2: https://github.com/CESNET/netopeer2
-- sysrepo: https://github.com/sysrepo/sysrepo
-- containerlab: https://containerlab.dev/
-- Moto: https://github.com/getmoto/moto
-- Azurite: https://github.com/Azure/Azurite
-- fake-gcs-server: https://github.com/fsouza/fake-gcs-server
-- Toxiproxy: https://github.com/Shopify/toxiproxy
-- NetBox: https://github.com/netbox-community/netbox
-- NetBox demo data: https://github.com/netbox-community/netbox-demo-data
+只有真实使用证明某个具体协议不可替代时，才从本文选择一个成熟工具单独接入。
