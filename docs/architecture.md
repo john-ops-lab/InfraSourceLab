@@ -1,476 +1,462 @@
-# InfraSourceLab 总体架构
+# InfraSourceLab 精简架构
 
-## 1. 核心架构性质
+## 1. 架构目标
 
-InfraSourceLab 必须同时满足：
+首版架构只为这条链路服务：
 
-1. **确定性**：同一 immutable Revision 在相同编译器/生成器/Driver-plan 版本下可重复 Compile；
-2. **Run 隔离**：同一 Compile 的多个 Run 不共享可变 Truth/Source/backend/fault state；
-3. **Compile / Run 分层**：确定性计划与运行时 ephemera 不混入同一个 Manifest；
-4. **Capability 分层**：产品/Driver 能力、Compile 需求、Agent 实际能力、Start admission 分开；
-5. **可扩展**：新增 Source 主要增加 Driver；
-6. **不造协议轮子**：优先成熟 Simulator / real service；
-7. **可验证**：Truth / Projection / Observation / Verification 是一等模型；
-8. **低交互成本**：AI / Builder 普通入口，YAML 仅 Expert representation。
+```text
+Prompt / Template
+       ↓
+Validated GenerationSpec
+       ↓
+Deterministic Generator
+       ↓
+Dataset: CI Records + Relations
+       ↓
+Authenticated REST API / Export
+```
+
+判断标准不是“未来扩展是否完美”，而是：能否快速完成、容易运行、容易 Review，并能立即给 DLR 和 CMDB 使用。
 
 ---
 
 ## 2. 总体架构
 
 ```text
-Web
-│ React 19 / TS / Vite / Tailwind / shadcn / assistant-ui
-│ AI Create / Builder / World / Sources / Timeline / Verify / Expert YAML
-│
-↓ HTTP / JSON / SSE
-
-Control (no Docker socket)
-│ Authoring / Scenario / Revision / Compile
-│ Truth / Projection / Driver Registry
-│ Run / Admission / Timeline / Observation / Verification
-│ AI Gateway / Importers
-│
-├─ PostgreSQL
-│
-└─ typed Agent API
-      ↓
-   Lab Agent (Docker privilege)
-   AgentCapabilities / runtime materialization
-      ↓
-   per-Run Simulator / Real Service / Contract/Replay
-      ↓
-   DLR / CMDB / Test Client
-      ↓
-   Observation / Verification
+┌───────────────────────────────────────┐
+│ React Web                             │
+│ shadcn/ui + assistant-ui              │
+│                                       │
+│ Create / Datasets / Dataset Detail    │
+│ API & Export / optional Topology      │
+└──────────────────┬────────────────────┘
+                   │ HTTP/JSON
+                   ▼
+┌───────────────────────────────────────┐
+│ FastAPI Application                   │
+│                                       │
+│ AI Spec Service                       │
+│ GenerationSpec Validation             │
+│ Deterministic Data Generator          │
+│ Dataset CRUD / Query                  │
+│ Bearer Auth                           │
+│ Export                                │
+└───────────────┬───────────────────────┘
+                │ SQLAlchemy
+                ▼
+┌───────────────────────────────────────┐
+│ SQLite                                │
+│ datasets / ci_records / ci_relations  │
+└───────────────────────────────────────┘
 ```
 
-Frontend loop：Requirement → UI Skills → shadcn composition → implementation → Chrome DevTools MCP → fix → Playwright。
+正常部署是一个应用容器和一个持久化目录。
+
+不存在独立 Control、Lab Agent、Worker、消息队列、PostgreSQL 集群或运行时容器编排。
 
 ---
 
-## 3. Control 与 Lab Agent
+## 3. 后端模块
 
-### Control
-
-- unsaved Working Copy validate/estimate；
-- Scenario / immutable Revision；
-- deterministic Compile；
-- Base Truth/Projection；
-- Driver Registry；
-- Compile Requirements；
-- Agent capability discovery + Run admission；
-- Run Truth/Projection lineage；
-- Verification；
-- AI/Import；
-- typed Agent commands。
-
-### Agent
-
-唯一接触 Docker：
-
-- report actual AgentCapabilities；
-- allowlisted exact image/runtime；
-- per-run network/workspace/volume；
-- materialize Run；
-- Driver start/health/apply/stop/cleanup；
-- bounded logs；
-- reconcile/GC。
-
-No arbitrary shell/image/host mount。
-
----
-
-## 4. 核心模块
+建议保持少量清晰模块：
 
 ```text
 backend/app/
-  authoring/
-  scenario/
-  compiler/
-  truth/
-  projection/
-  drivers/
-  agents/
-  admission/
-  runs/
-  timeline/
-  observations/
-  verification/
-  ai/
-  imports/
   api/
+  auth/
+  ai/
+  specs/
+  generators/
+  datasets/
+  exports/
+  db/
 ```
 
-不要求逐字目录名，但职责必须能表达上述边界。
+### api
+
+FastAPI routes、分页参数、统一错误响应。
+
+### auth
+
+读取 `ISL_API_KEY`，校验 Bearer Token。
+
+### ai
+
+把自然语言转换为结构化 `GenerationSpec`。
+
+### specs
+
+Pydantic model、字段校验、类型和关系引用校验。
+
+### generators
+
+内置 CI 模板、字段生成、关系生成、seed 管理。
+
+### datasets
+
+持久化与查询 CI/关系。
+
+### exports
+
+JSON、CSV、XLSX。
+
+不要建立没有当前职责的 compiler、agent、truth-version、verification 等空模块。
 
 ---
 
-## 5. Authoring 模型
+## 4. 数据生成边界
+
+### AI 层
+
+AI 只生成小型规格：
 
 ```text
-AI Create ────────┐
-Visual Builder ───┼──→ Semantic Working Copy
-Expert YAML ──────┘          │
-                             ├─ Safe parse/validate
-                             ├─ Estimate
-                             └─ semantic_digest
-                             ↓
-                          Save
-                             ↓
-                    Immutable Revision
+prompt
+  ↓
+GenerationSpec
 ```
 
-Builder patches known typed paths and preserves legal advanced fields。YAML comments/formatting 不保证逐字符 round-trip；语义必须保留。
+AI 不生成完整数据集，不保存数据库，不执行代码，不操作 Docker。
+
+### 本地生成层
+
+```text
+Validated Spec + Seed + Generator Version
+  ↓
+CI Records
+  ↓
+Relations
+  ↓
+Integrity Check
+  ↓
+Persist Dataset
+```
+
+生成器负责重复性和完整性。
 
 ---
 
-## 6. Digests
+## 5. 数据模型
+
+## Dataset
+
+建议字段：
 
 ```text
-source_digest   = raw source/YAML hash
-semantic_digest = canonical normalized typed-document hash
+id
+name
+description
+prompt
+generation_spec_json
+seed
+generator_version
+record_count
+relation_count
+created_at
 ```
 
-AI Candidate uses `base_semantic_digest`；current digest 不一致时 M1 起禁止 blind Apply。
+## CIRecord
+
+```text
+id                 database id
+ci_id              stable ID inside dataset
+dataset_id
+type
+name
+attributes_json
+tags_json
+```
+
+唯一约束：
+
+```text
+(dataset_id, ci_id)
+```
+
+常用索引：
+
+```text
+(dataset_id, type)
+(dataset_id, name)
+```
+
+## CIRelation
+
+```text
+id
+dataset_id
+relation_id
+type
+from_ci_id
+to_ci_id
+attributes_json
+```
+
+生成完成前校验 from/to 均存在。
+
+MVP 不需要：
+
+```text
+ScenarioRevision
+CompileManifest
+LabRun
+TruthVersion
+SourceProjection
+Observation
+VerificationReport
+```
 
 ---
 
-## 7. Authoring / Persistence / Compile APIs
+## 6. API 边界
 
-### Unsaved Authoring
-
-```text
-POST /api/authoring/validate
-POST /api/authoring/estimate
-POST /api/ai/scenario-candidate   # M1
-```
-
-No Scenario ID required；no runtime permission created。
-
-### Persistence
+### Health
 
 ```text
-GET/POST /api/scenarios
-GET      /api/scenarios/{id}
-GET/POST /api/scenarios/{id}/revisions
-GET      /api/scenarios/{id}/revisions/{revision_id}
+GET /health
 ```
 
-### Compile
+### AI/Spec
+
+可以使用一个合并接口，也可以拆分，但产品行为必须清楚：
 
 ```text
-POST /api/compiles    # scenario_revision_id
-GET  /api/compiles/{id}
+POST /api/v1/specs/from-prompt
+POST /api/v1/datasets
 ```
 
-### Run
+或：
 
 ```text
-POST /api/runs        # compile_id + target/default Agent selection as applicable
-GET  /api/runs/{id}
-POST /api/runs/{id}/stop
-POST /api/runs/{id}/cleanup
+POST /api/v1/datasets/generate
 ```
 
-Start request cannot carry a modified Scenario payload to bypass Compile。
+如果合并，响应/错误仍应区分 AI 规格失败与本地数据生成失败。
+
+### Dataset
+
+```text
+GET    /api/v1/datasets
+GET    /api/v1/datasets/{id}
+DELETE /api/v1/datasets/{id}
+GET    /api/v1/datasets/{id}/summary
+```
+
+### CI
+
+```text
+GET /api/v1/datasets/{id}/cis
+GET /api/v1/datasets/{id}/cis/{ci_id}
+```
+
+查询：
+
+```text
+type
+q
+page
+page_size
+```
+
+### Relations
+
+```text
+GET /api/v1/datasets/{id}/relations
+```
+
+查询：
+
+```text
+type
+from_id
+to_id
+page
+page_size
+```
+
+### Export
+
+```text
+GET /api/v1/datasets/{id}/export?format=json|csv|xlsx
+```
 
 ---
 
-## 8. Compile Manifest vs Run Manifest
-
-### Compile Manifest — deterministic / no secrets / host-independent where possible
-
-Contains：
+## 7. 认证
 
 ```text
-scenario_revision_id
-source_digest / semantic_digest
-schema / normalization / compiler version
-seed / generator versions
-Base Truth digest/count
-Base Source Projection digests
-Driver versions / exact backend versions / semantic capabilities
-CompileRequirements
-content-addressed deterministic Driver Plans/artifacts
+ISL_API_KEY
 ```
 
-Must NOT contain：
+所有 `/api/v1/*` 数据与变更接口要求：
 
-```text
-run_id
-host-published port
-container/network/volume runtime IDs
-per-Run random password/token/community/key
-runtime endpoint
-runtime-only native IDs
-active runtime faults/current Run Truth version
+```http
+Authorization: Bearer <key>
 ```
 
-Compile plan can specify internal service-port/protocol needs, required images/binaries, expected resources, architecture constraints, but not allocate the host runtime itself。
+实现保持简单：
 
-### Run Manifest / RunSource — per-Run materialization
+- 环境变量读取；
+- 安全字符串比较；
+- 401；
+- 日志不打印 key；
+- 默认仅监听 localhost。
 
-Contains：
+首版不存 API Key 表，不做登录用户、Session、OAuth、RBAC。
 
-```text
-run_id
-target Agent ID
-container/network/volume IDs/names
-host published ports
-runtime endpoint
-per-Run generated credential / secret reference
-runtime native identity map
-actual backend/runtime version confirmation
-current Truth / Projection version
-active faults
-health/status
-```
-
-Same Compile → multiple isolated Runs without port/credential collision or Compile-digest drift。
+前端可以让用户在当前浏览器会话录入 API Key，并附到请求头。
 
 ---
 
-## 9. DriverCapabilities vs CompileRequirements vs AgentCapabilities
+## 8. AI Provider
 
-这是未来 remote Agent 不返工的关键。
-
-### DriverCapabilities — 产品/版本层
-
-描述一个 Driver + exact backend version **理论上/经测试能做什么**：
+环境变量：
 
 ```text
-protocols/transports
-supported object/features
-run-scoped actions
-protocol faults
-compatible FaultBackends
-required image/binary families
-supported architectures (known)
-resource-hint model
-fidelity limitations
+ISL_AI_BASE_URL
+ISL_AI_API_KEY
+ISL_AI_MODEL
+ISL_AI_TIMEOUT_SECONDS
 ```
 
-来自 exact pinned version + integration tests，不来自 upstream main 猜测。
+Provider 接口保持薄：
 
-### CompileRequirements — 场景需求层
-
-Compile 从 Scenario + Driver Plans 汇总“要运行这个 Compile 需要什么”：
-
-```text
-required Drivers/backends
-protocol/transport
-architecture constraints if any
-required images/binaries
-minimum/estimated CPU/memory/disk
-container count
-internal ports
-special platform features
-FaultBackend requirements
+```python
+class AIProvider(Protocol):
+    async def create_generation_spec(self, request: PromptRequest) -> GenerationSpec: ...
 ```
 
-这是 deterministic Compile output 的一部分，不包含实际 host allocation。
+需要：
 
-### AgentCapabilities — 运行主机层
+- OpenAI-compatible HTTP；
+- JSON/structured output；
+- timeout；
+- response size limit；
+- parse/validation diagnostics；
+- fake provider for tests。
 
-Agent 实际报告：
-
-```text
-agent_id
-OS / arch
-runtime/Docker version
-available/pullable allowlisted backends
-installed binaries
-supported FaultBackends/transports
-CPU/memory/disk availability/hints
-published-port capacity
-platform-specific limitations
-```
-
-M1 单 Agent 可以很简单，但模型必须独立存在；M6 再增加认证 remote Agent/多 Agent 管理。
-
-### Start Admission
-
-```text
-CompileRequirements
-       vs
-AgentCapabilities
-       ↓
-PASS / WARNING / REJECT diagnostics
-```
-
-只有 admission PASS 才进入 Run materialization。
-
-### Why Compile should not blindly bind current host
-
-Driver 在产品层 supported，但当前 Mac Agent 可能因 arch/image/resource 不可运行；未来 remote Linux Agent 可能可运行。
-
-因此要区分：
-
-```text
-unsupported by Driver/product → Compile error
-supported but current Agent unavailable/incompatible → Start admission error / authoring warning
-```
-
-M1 单机 UI 可以同时展示当前 Agent feasibility，但不能把 host-specific ephemera写进 Compile semantic digest。
+不需要工具调用、Agent、长期会话、知识库、附件或模型市场。
 
 ---
 
-## 10. Compile Base Truth 与 Run Truth
+## 9. 数据生成策略
+
+每种内置 CI 类型对应一个简单 provider/template：
 
 ```text
-Revision R7
- ↓
-Compile C12
-Base Truth V0 (immutable)
- ├────────────────────┐
- ↓                    ↓
-Run A                 Run B
-V0→V1→V2              V0→V1
+physical_server → server generator
+virtual_machine → VM generator
+application → application generator
+...
 ```
 
-Runtime action never mutates Base；Runs independent；Source freshness/faults run-scoped；Verification selects explicit Run/version。
+字段使用 seed 控制的 PRNG 和 Mimesis/Faker。
 
----
-
-## 11. Driver Contract 分层
-
-### Compile/render side
+关系生成器读取已有对象 ID，按简单策略连接：
 
 ```text
-capabilities()
-validate(compiled_source)
-render_plan(compiled_source) → deterministic DriverPlan/artifacts + Requirements
+balanced
+round_robin
+random_seeded
+one_to_many
 ```
 
-No Docker socket/host port/runtime secret required。
+生成器不需要通用脚本语言。
 
-### Agent/runtime side
+---
+
+## 10. 事务与失败
+
+一次数据集生成应当：
 
 ```text
-probe_agent_capability()
-materialize(run_context, driver_plan)
-start / health
-apply(run-scoped action)
-stop / cleanup
+validate spec
+→ generate in memory/batches
+→ validate relations
+→ persist in one transaction or clearly bounded batches
+→ publish dataset as ready
 ```
 
-Python modules/classes can vary but security/determinism boundary cannot。
+失败时不留下“看起来成功但数据不完整”的数据集。
+
+对 10k 规模，优先 bulk insert，避免逐条 commit。
+
+不需要引入队列；先使用同步/异步 HTTP 请求。如果真实测量发现超时，再增加简单 job 状态，不提前建设 Worker 系统。
 
 ---
 
-## 12. Fault Backend / Transport capability
+## 11. 前端架构
 
-Toxiproxy is shared **TCP** fault backend。Fault availability = Source transport + DriverCapabilities + CompileRequirements + AgentCapabilities/FaultBackendCapabilities。
-
-SNMP default UDP does not falsely inherit TCP faults。Dedicated UDP backend later if explicitly designed。
-
----
-
-## 13. Run lifecycle
+页面：
 
 ```text
-Working Copy
- ↓ Save
-REVISION
- ↓ Compile
-COMPILED (Base V0 + Compile Manifest + Requirements)
- ↓ select/default Agent + Admission
-ADMITTED
- ↓ Materialize
-PREPARING / STARTING
- ↓ health
-READY
- ↓ timeline/fault/observation
-READY
- ↓ Stop
-STOPPED
- ↓ Cleanup
-CLEANED
+/create
+/datasets
+/datasets/:id
+/settings
 ```
 
-`ADMITTED` can be explicit state or logical gate; implementation naming can differ, but admission check cannot be skipped。
+Dataset detail 通过 API 分页，不把整个数据集加载到浏览器。
+
+前端不维护另一套数据生成规则；后端 `GenerationSpec` 是唯一权威模型。
 
 ---
 
-## 14. Per-Run isolation
+## 12. 部署
 
-Labels：
+用户路径：
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+目标：
 
 ```text
-io.infrasourcelab.managed=true
-io.infrasourcelab.run=<run_id>
-io.infrasourcelab.driver=<driver>
-io.infrasourcelab.source=<source>
+one app container
+one mounted data directory
+SQLite file
+no Docker socket
+no external database requirement
 ```
 
-Default endpoint internal/127.0.0.1；cleanup only target Run。
+开发模式可以分开运行 Vite 与 FastAPI。
 
 ---
 
-## 15. Storage ownership
+## 13. 适度安全
 
-PostgreSQL domain must express：
+必须做：
 
-```text
-scenarios / revisions
-compiles / compile manifests / requirements
-compile Base Truth/Projection
-agents / capability snapshots (minimal M1, richer M6)
-lab_runs / run manifests / run sources
-run Truth Versions / Projection Versions
-run events
-observations / verification reports
-```
+- API Key；
+- localhost default；
+- request/spec/count limits；
+- safe JSON/Pydantic validation；
+- export filename/path safety；
+- AI key server-side；
+- no secrets in logs；
+- no arbitrary execution。
 
-Exact tables may differ。
+不做：
 
-Artifacts/content-addressed plans live outside giant JSONB; DB stores paths/digests/metadata。
-
----
-
-## 16. Frontend / AI
-
-Create Lab / Scenarios / Runs / Sources / Verification / Settings；Scenario detail Builder/World/Sources/Timeline/Runs/Verify/Expert YAML。
-
-M0 establishes one shadcn `components.json`/theme/base/icon baseline；assistant-ui uses same system。No Ant Design/DLR UI。
-
-M1 AI Provider optional；AI can validate/estimate/propose but cannot Save/Compile/Run/Fault/Docker/secret。
-
-UI can show：
-
-```text
-Driver supported
-Current Agent: available / incompatible / insufficient resources
-```
-
-without conflating them。
+- 多租户隔离；
+- 企业 SSO；
+- Secret Manager 集群；
+- Docker sandbox；
+- mTLS Agent protocol。
 
 ---
 
-## 17. Browser Gate
+## 14. 未来扩展原则
 
-UI Wave: UI Skills → shadcn reuse → Chrome DevTools MCP (flow/screenshots/Console/Network/1024–1920/performance) → Playwright。
+只有真实使用证明需要时再增加：
 
-M1 Run flow must exercise admission failure and success at least with fake/simulated Agent capability fixtures if current machine cannot cover both。
+- 一个具体协议 Adapter；
+- 一个具体导入格式；
+- PostgreSQL；
+- 后台生成 Job；
+- 更大规模；
+- 更复杂拓扑。
 
----
-
-## 18. 不可破坏约束
-
-1. AI-first / Builder / Expert YAML；
-2. unsaved validate/estimate；
-3. safe bounded parser；
-4. Compile only immutable Revision；
-5. Compile Manifest deterministic/no Run ephemera；
-6. DriverCapabilities ≠ CompileRequirements ≠ AgentCapabilities；
-7. Start requires admission PASS；
-8. Run Manifest owns ephemeral materialization；
-9. Compile Base Truth immutable；
-10. Run Truth/Projection isolated；
-11. semantic_digest stale safety；
-12. no mature protocol reimplementation；
-13. Control no Docker socket；
-14. Agent typed/allowlisted；
-15. AI no runtime write privilege；
-16. one shadcn design system；
-17. capability reflects exact tested version + transport/platform。
+扩展应围绕现有 `GenerationSpec → Dataset → API` 增量添加，而不是重新建设平台。
