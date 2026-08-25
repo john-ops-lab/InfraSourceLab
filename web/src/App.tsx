@@ -1,13 +1,15 @@
 import { useEffect, type ReactNode } from "react"
 import { BrowserRouter, NavLink, Navigate, Route, Routes, useNavigate } from "react-router-dom"
-import { Database, Plus, Settings } from "lucide-react"
+import { Bot, Database, Plus, Settings } from "lucide-react"
 import { Toaster } from "@/components/ui/sonner"
 import { toast } from "sonner"
-import { onUnauthorized } from "@/lib/api"
+import { getSessionUser, hasSession, onUnauthorized } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import AIConfigPage from "@/pages/AIConfigPage"
 import CreatePage from "@/pages/CreatePage"
 import DatasetsPage from "@/pages/DatasetsPage"
 import DatasetDetailPage from "@/pages/DatasetDetailPage"
+import LoginPage from "@/pages/LoginPage"
 import SettingsPage from "@/pages/SettingsPage"
 
 function navClassName({ isActive }: { isActive: boolean }): string {
@@ -26,9 +28,9 @@ function Layout({ children }: { children: ReactNode }) {
     onUnauthorized(() => {
       toast.error("认证失败（401）", {
         id: "auth-401",
-        description: "API Key 缺失或无效，请在设置页重新填写。",
+        description: "登录已过期或凭证无效，请重新登录或检查 API Key。",
       })
-      navigate("/settings")
+      navigate("/login")
     })
   }, [navigate])
 
@@ -52,10 +54,19 @@ function Layout({ children }: { children: ReactNode }) {
               <Database className="size-4" aria-hidden />
               数据集列表
             </NavLink>
+            <NavLink to="/settings/ai" className={navClassName}>
+              <Bot className="size-4" aria-hidden />
+              AI 配置
+            </NavLink>
             <NavLink to="/settings" className={navClassName}>
               <Settings className="size-4" aria-hidden />
               设置
             </NavLink>
+            {hasSession() && (
+              <span className="ml-2 hidden text-xs text-muted-foreground sm:inline">
+                {getSessionUser()}
+              </span>
+            )}
           </nav>
         </div>
       </header>
@@ -67,16 +78,25 @@ function Layout({ children }: { children: ReactNode }) {
 export default function App() {
   return (
     <BrowserRouter>
-      <Layout>
-        <Routes>
-          <Route path="/" element={<Navigate to="/create" replace />} />
-          <Route path="/create" element={<CreatePage />} />
-          <Route path="/datasets" element={<DatasetsPage />} />
-          <Route path="/datasets/:id" element={<DatasetDetailPage />} />
-          <Route path="/settings" element={<SettingsPage />} />
-          <Route path="*" element={<Navigate to="/create" replace />} />
-        </Routes>
-      </Layout>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route
+          path="/*"
+          element={
+            <Layout>
+              <Routes>
+                <Route path="/" element={<Navigate to="/create" replace />} />
+                <Route path="/create" element={<CreatePage />} />
+                <Route path="/datasets" element={<DatasetsPage />} />
+                <Route path="/datasets/:id" element={<DatasetDetailPage />} />
+                <Route path="/settings" element={<SettingsPage />} />
+                <Route path="/settings/ai" element={<AIConfigPage />} />
+                <Route path="*" element={<Navigate to="/create" replace />} />
+              </Routes>
+            </Layout>
+          }
+        />
+      </Routes>
       <Toaster richColors position="top-right" />
     </BrowserRouter>
   )

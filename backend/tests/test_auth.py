@@ -26,10 +26,16 @@ def test_correct_token_allows_access(client, auth):
     assert response.status_code == 200
 
 
+def test_status_is_public(client):
+    # 登录页与设置页需要在未认证时读取 AI 配置状态
+    response = client.get("/api/v1/status")
+    assert response.status_code == 200
+    assert "ai_configured" in response.json()
+
+
 def test_all_v1_endpoints_require_auth(client):
     paths = [
         ("GET", "/api/v1/templates"),
-        ("GET", "/api/v1/status"),
         ("POST", "/api/v1/specs/from-prompt"),
         ("POST", "/api/v1/datasets"),
         ("GET", "/api/v1/datasets/1"),

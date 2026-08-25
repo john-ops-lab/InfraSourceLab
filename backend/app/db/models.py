@@ -1,4 +1,7 @@
-"""SQLAlchemy 数据模型。核心数据模型保持精简：三张表。"""
+"""SQLAlchemy 数据模型。核心数据三张表 + 账户/令牌/设置三张表。
+
+新增表通过 create_all 幂等创建，不改变 user_version=1 的版本约定。
+"""
 
 from datetime import datetime, timezone
 
@@ -79,3 +82,36 @@ class CIRelation(Base):
     from_ci_id: Mapped[str] = mapped_column(String(80), nullable=False)
     to_ci_id: Mapped[str] = mapped_column(String(80), nullable=False)
     attributes_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
+
+
+class AppUser(Base):
+    """管理员账户：密码只存 PBKDF2 哈希。"""
+
+    __tablename__ = "app_users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    password_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    password_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AuthToken(Base):
+    """登录会话令牌：只存 SHA-256 哈希，带过期时间。"""
+
+    __tablename__ = "auth_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    username: Mapped[str] = mapped_column(String(64), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+
+class AppSetting(Base):
+    """运行时设置（如 AI 模型配置）：键值对持久化。"""
+
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, default="", nullable=False)

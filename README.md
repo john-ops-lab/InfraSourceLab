@@ -10,7 +10,7 @@
 ├─ LICENSE
 ├─ README.md
 ├─ docs/                 产品、架构、前端与调研设计文档 + 状态说明
-├─ backend/              FastAPI + SQLAlchemy + SQLite 数据生成引擎（51 个 pytest）
+├─ backend/              FastAPI + SQLAlchemy + SQLite 数据生成引擎（60 个 pytest）
 ├─ web/                  React 19 + Vite + Tailwind v4 + shadcn/ui 前端（Vitest + Playwright）
 ├─ Dockerfile            单镜像：后端 + 内置前端静态产物
 └─ docker-compose.yml    只向 127.0.0.1:8080 发布
@@ -36,7 +36,11 @@ docker compose up -d --build
 curl http://127.0.0.1:8080/health
 ```
 
-浏览器打开 `http://127.0.0.1:8080`，在设置页填入同一个 `ISL_API_KEY` 即可使用。
+浏览器打开 `http://127.0.0.1:8080`：
+
+- **管理员登录（主通道）**：默认账户 `admin` / `admin123`，不强制改密，登录后可在设置页自行修改；会话令牌 12 小时有效。
+- **API Key（备用通道）**：在设置页或登录页的「改用 API Key」入口填入 `.env` 中的 `ISL_API_KEY`。
+- **AI 模型配置**：管理员登录后在导航「AI 配置」页设置 OpenAI 兼容服务的 base_url / api_key / model，保存到数据库并立即生效，无需重启。
 
 ### 本地开发
 
@@ -52,7 +56,7 @@ cd web && npm install && npm run dev
 ### 测试
 
 ```bash
-cd backend && uv run pytest        # 51 个用例
+cd backend && uv run pytest        # 60 个用例
 cd web && npm test                 # Vitest 单测
 cd web && npx playwright test      # 端到端（自动拉起生产形态服务）
 ```

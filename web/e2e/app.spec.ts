@@ -44,9 +44,9 @@ test("主路径：密钥 → 模板 → 生成 → 查看 CI/关系/API 与导�
   await expect(page.getByRole("table").locator("tbody tr")).not.toHaveCount(0)
 })
 
-test("未配置密钥访问受保护页面会被引导到设置页", async ({ page }) => {
+test("未配置密钥访问受保护页面会被引导到登录页", async ({ page }) => {
   await page.goto("/datasets")
-  await expect(page).toHaveURL(/\/settings/)
+  await expect(page).toHaveURL(/\/login/)
   await expect(page.getByText("认证失败（401）")).toBeVisible()
 })
 
@@ -59,10 +59,47 @@ test("AI 未配置时提示词建议给出明确错误并引导模板", async ({
   await expect(page.getByRole("heading", { name: "内置模板" })).toBeVisible()
 })
 
-test("错误的 API Key 会触发 401 引导", async ({ page }) => {
+test("错误的 API Key 会触发 401 引导到登录页", async ({ page }) => {
   await page.goto("/settings")
   await page.getByLabel("API Key").fill("wrong-key")
   await page.getByRole("button", { name: "保存" }).click()
   await page.goto("/datasets")
-  await expect(page).toHaveURL(/\/settings/)
+  await expect(page).toHaveURL(/\/login/)
+})
+
+test("管理员登录后可访问 AI 配置页与修改密码入口", async ({ page }) => {
+  await page.goto("/login")
+  await page.getByLabel("用户名").fill("admin")
+  await page.getByLabel("密码").fill("admin123")
+  await page.getByRole("button", { name: "登录" }).click()
+  await expect(page).toHaveURL(/\/create/)
+
+  // 会话令牌可直接访问数据接口
+  await page.goto("/datasets")
+  await expect(page.getByRole("heading", { name: "数据集列表" })).toBeVisible()
+
+  // AI 配置页对管理员会话可见
+  await page.goto("/settings/ai")
+  await expect(page.getByLabel("Base URL")).toBeVisible()
+  await expect(page.getByLabel("模型名称")).toBeVisible()
+
+  // 设置页出现修改密码入口（不强制）
+  await page.goto("/settings")
+  await expect(page.getByLabel("当前密码")).toBeVisible()
+  await expect(page.getByRole("button", { name: "退出登录" })).toBeVisible()
+})
+
+test("错误密码登录被拒绝", async ({ page }) => {
+  await page.goto("/login")
+  await page.getByLabel("用户名").fill("admin")
+  await page.getByLabel("密码").fill("wrong-password")
+  await page.getByRole("button", { name: "登录" }).click()
+  await expect(page.getByText("用户名或密码错误")).toBeVisible()
+  await expect(page).toHaveURL(/\/login/)
+})
+
+test("API Key 会话不能修改 AI 配置（403）", async ({ page }) => {
+  await login(page)
+  await page.goto("/settings/ai")
+  await expect(page.getByText(/请先使用管理员账号|当前会话无权访问/)).toBeVisible()
 })

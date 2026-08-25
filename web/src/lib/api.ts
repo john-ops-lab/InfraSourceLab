@@ -1,4 +1,6 @@
-// API 客户端：Bearer Token 只保存在 sessionStorage，不写入 URL、日志或构建产物
+// API 客户端：会话令牌与 API Key 都只保存在 sessionStorage，不写入 URL、日志或构建产物。
+// 认证双通道：管理员登录会话令牌为主，环境变量 ISL_API_KEY 作为备用。
+
 
 import type {
   CIRecord,
@@ -11,8 +13,10 @@ import type {
 } from "./spec"
 
 const KEY_STORAGE = "isl_api_key"
+const TOKEN_STORAGE = "isl_session_token"
+const USER_STORAGE = "isl_session_user"
 
-// 401 时通知界面跳转到设置页重新填写 API Key
+// 401 时通知界面跳转到登录页
 let unauthorizedHandler: (() => void) | null = null
 
 export function onUnauthorized(handler: () => void): void {
@@ -46,6 +50,33 @@ export function hasApiKey(): boolean {
   return getApiKey().length > 0
 }
 
+export function getSessionToken(): string {
+  return sessionStorage.getItem(TOKEN_STORAGE) ?? ""
+}
+
+export function getSessionUser(): string {
+  return sessionStorage.getItem(USER_STORAGE) ?? ""
+}
+
+export function setSession(token: string, username: string): void {
+  sessionStorage.setItem(TOKEN_STORAGE, token)
+  sessionStorage.setItem(USER_STORAGE, username)
+}
+
+export function clearSession(): void {
+  sessionStorage.removeItem(TOKEN_STORAGE)
+  sessionStorage.removeItem(USER_STORAGE)
+}
+
+export function hasSession(): boolean {
+  return getSessionToken().length > 0
+}
+
+/** 认证令牌：会话令牌优先，API Key 备用。 */
+export function getAuthToken(): string {
+  return getSessionToken() || getApiKey()
+}
+
 export function extractDetail(payload: unknown, fallback: string): string {
   if (typeof payload === "string") return payload
   if (payload && typeof payload === "object") {
@@ -68,10 +99,11 @@ async function request<T>(
   path: string,
   options: RequestInit = {},
   signal?: AbortSignal,
+  notify401 = true,
 ): Promise<T> {
   const headers = new Headers(options.headers)
-  const key = getApiKey()
-  if (key) headers.set("Authorization", `Bearer ${key}`)
+  const token = getAuthToken()
+  if (token) headers.set("Authorization", `Bearer ${token}`)
   if (options.body) headers.set("Content-Type", "application/json")
 
   let response: Response
@@ -89,7 +121,7 @@ async function request<T>(
     } catch {
       payload = null
     }
-    if (response.status === 401 && unauthorizedHandler) unauthorizedHandler()
+    if (response.status === 401 && notify401 && unauthorizedHandler) unauthorizedHandler()
     throw new ApiError(response.status, extractDetail(payload, `请求失败（HTTP ${response.status}）`))
   }
   if (response.status === 204) return undefined as T
@@ -113,8 +145,47 @@ export interface DatasetDetail extends DatasetListItem {
   spec: GenerationSpec
 }
 
+export interface AIConfigInfo {
+  base_url: string
+  model: string
+  timeout_seconds: number
+  api_key_configured: boolean
+  api_key_hint: string
+  ai_configured: boolean
+}
+
 export const api = {
   status: () => request<{ ai_configured: boolean }>("/api/v1/status"),
+
+  // 登录接口不携带令牌，也不触发全局 401 跳转（密码错误的 401 由页面自己处理）
+  login: (username: string, password: string) =>
+    request<{ token: string; username: string; expires_at: string }>(
+      "/api/v1/auth/login",
+      { method: "POST", body: JSON.stringify({ username, password }) },
+      undefined,
+      false,
+    ),
+
+  logout: () => request<void>("/api/v1/auth/logout", { method: "POST" }),
+
+  changePassword: (oldPassword: string, newPassword: string) =>
+    request<void>("/api/v1/auth/change-password", {
+      method: "POST",
+      body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }),
+    }),
+
+  getAIConfig: () => request<AIConfigInfo>("/api/v1/admin/ai-config"),
+
+  updateAIConfig: (payload: {
+    base_url: string
+    api_key: string | null
+    model: string
+    timeout_seconds: number
+  }) =>
+    request<AIConfigInfo>("/api/v1/admin/ai-config", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
 
   templates: () =>
     request<{ templates: TemplateInfo[]; ci_types: string[]; relation_types: string[] }>(
@@ -179,9 +250,9 @@ export const api = {
 
   // 导出需要携带 Authorization 请求头，因此走 fetch + Blob 下载
   downloadExport: async (id: number, format: "json" | "csv" | "xlsx") => {
-    const key = getApiKey()
+    const token = getAuthToken()
     const response = await fetch(`/api/v1/datasets/${id}/export?format=${format}`, {
-      headers: key ? { Authorization: `Bearer ${key}` } : {},
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
     if (!response.ok) {
       if (response.status === 401 && unauthorizedHandler) unauthorizedHandler()

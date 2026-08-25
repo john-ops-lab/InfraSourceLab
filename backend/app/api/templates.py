@@ -2,11 +2,11 @@
 
 from fastapi import APIRouter, Depends
 
-from ..auth.token import require_api_key
+from ..auth.token import require_auth
 from ..specs.models import BUILTIN_CI_TYPES, BUILTIN_RELATION_TYPES
 from ..specs.templates import BUILTIN_TEMPLATES
 
-router = APIRouter(prefix="/api/v1", tags=["模板"], dependencies=[Depends(require_api_key)])
+router = APIRouter(prefix="/api/v1", tags=["模板"], dependencies=[Depends(require_auth)])
 
 
 @router.get("/templates")

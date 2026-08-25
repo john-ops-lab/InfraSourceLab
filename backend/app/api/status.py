@@ -1,13 +1,18 @@
-"""运行状态：前端需要知道 AI Provider 是否已配置。"""
+"""运行状态：前端需要知道 AI Provider 是否已配置。
 
-from fastapi import APIRouter, Depends, Request
+公开接口：只返回布尔标志，不含敏感信息；登录页与设置页需要在未认证时访问。
+"""
 
-from ..auth.token import require_api_key
+from fastapi import APIRouter, Request
 
-router = APIRouter(prefix="/api/v1", tags=["系统"], dependencies=[Depends(require_api_key)])
+router = APIRouter(prefix="/api/v1", tags=["系统"])
 
 
 @router.get("/status")
 def status(request: Request) -> dict:
-    settings = request.app.state.settings
-    return {"ai_configured": settings.ai_configured}
+    store = getattr(request.app.state, "ai_config_store", None)
+    if store is not None:
+        configured = store.ai_configured()
+    else:
+        configured = request.app.state.settings.ai_configured
+    return {"ai_configured": configured}

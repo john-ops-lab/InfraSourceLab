@@ -8,11 +8,11 @@ from ..ai.provider import (
     AIProviderError,
     AITimeoutError,
 )
-from ..auth.token import require_api_key
+from ..auth.token import require_auth
 from ..limits import MAX_PROMPT_LENGTH
 from .deps import get_ai_provider
 
-router = APIRouter(prefix="/api/v1", tags=["规格"], dependencies=[Depends(require_api_key)])
+router = APIRouter(prefix="/api/v1", tags=["规格"], dependencies=[Depends(require_auth)])
 
 
 class PromptRequest(BaseModel):

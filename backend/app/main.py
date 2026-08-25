@@ -10,12 +10,31 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from .ai.config import AIConfigStore
 from .ai.provider import OpenAICompatibleProvider
-from .api import datasets, health, specs, status, templates
+from .api import admin, auth_routes, datasets, health, specs, status, templates
+from .auth.password import hash_password
 from .config import Settings
+from .db.models import AppUser
 from .db.session import DatabaseVersionError, create_session_factory, init_database
 
 logger = logging.getLogger("infrasourcelab")
+
+DEFAULT_ADMIN_USERNAME = "admin"
+DEFAULT_ADMIN_PASSWORD = "admin123"
+
+
+def _seed_default_admin(session_factory) -> None:
+    """首次启动创建默认管理员；不强制改密，可在设置页自行修改。"""
+    with session_factory() as session:
+        if session.query(AppUser).count() == 0:
+            session.add(
+                AppUser(
+                    username=DEFAULT_ADMIN_USERNAME,
+                    password_hash=hash_password(DEFAULT_ADMIN_PASSWORD),
+                )
+            )
+            session.commit()
 
 
 def create_app(settings: Settings | None = None, ai_provider=None) -> FastAPI:
@@ -32,13 +51,17 @@ def create_app(settings: Settings | None = None, ai_provider=None) -> FastAPI:
     engine = init_database(settings.database_path)
     app.state.engine = engine
     app.state.session_factory = create_session_factory(engine)
-    app.state.ai_provider = ai_provider or OpenAICompatibleProvider(settings)
+    _seed_default_admin(app.state.session_factory)
+    app.state.ai_config_store = AIConfigStore(settings, app.state.session_factory)
+    app.state.ai_provider = ai_provider or OpenAICompatibleProvider(settings, app.state.ai_config_store)
 
     app.include_router(health.router)
     app.include_router(status.router)
     app.include_router(templates.router)
     app.include_router(specs.router)
     app.include_router(datasets.router)
+    app.include_router(auth_routes.router)
+    app.include_router(admin.router)
 
     # 前端静态产物：生产镜像内置；开发时可缺省。
     # 先注册 API 路由再挂载，未命中的非 API 路径回退到 index.html 以支持 SPA 深链。

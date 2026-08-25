@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from ..config import Settings
 from ..limits import MAX_AI_PROMPT_CHARS, MAX_AI_RESPONSE_BYTES
 from ..specs.models import BUILTIN_CI_TYPES, BUILTIN_RELATION_TYPES, SpecValidationError, parse_and_validate
+from .config import AIConfigStore
 
 
 class AINotConfiguredError(RuntimeError):
@@ -87,42 +88,58 @@ def _extract_json(content: str) -> dict:
 
 
 class OpenAICompatibleProvider:
-    """通过 /chat/completions 调用 OpenAI 兼容服务。"""
+    """通过 /chat/completions 调用 OpenAI 兼容服务。配置优先读运行时存储。"""
 
-    def __init__(self, settings: Settings):
+    def __init__(self, settings: Settings, config_store: "AIConfigStore | None" = None):
         self._settings = settings
+        self._config_store = config_store
+
+    def _resolve_config(self):
+        if self._config_store is not None:
+            return self._config_store.effective()
+        settings = self._settings
+
+        class _Static:
+            base_url = settings.isl_ai_base_url
+            api_key = settings.isl_ai_api_key
+            model = settings.isl_ai_model
+            timeout_seconds = settings.isl_ai_timeout_seconds
+            configured = settings.ai_configured
+
+        return _Static()
 
     async def create_generation_spec(self, prompt: str) -> SpecProposal:
-        settings = self._settings
-        if not settings.ai_configured:
+        config = self._resolve_config()
+        if not config.configured:
             raise AINotConfiguredError(
-                "AI Provider 未配置。请设置 ISL_AI_BASE_URL、ISL_AI_API_KEY 和 ISL_AI_MODEL，"
-                "或使用内置模板创建数据集。"
+                "AI Provider 未配置。请在「AI 配置」页填写接入地址、密钥与模型，"
+                "或设置 ISL_AI_BASE_URL、ISL_AI_API_KEY 和 ISL_AI_MODEL 环境变量，"
+                "也可以改用内置模板创建数据集。"
             )
         prompt = prompt.strip()
         if len(prompt) > MAX_AI_PROMPT_CHARS:
             raise AIProviderError(f"提示词超过 {MAX_AI_PROMPT_CHARS} 字符上限，请精简后重试。")
 
-        url = settings.isl_ai_base_url.rstrip("/") + "/chat/completions"
+        url = config.base_url.rstrip("/") + "/chat/completions"
         payload = {
-            "model": settings.isl_ai_model,
+            "model": config.model,
             "temperature": 0.2,
             "messages": [
                 {"role": "system", "content": _SYSTEM_PROMPT},
                 {"role": "user", "content": prompt},
             ],
         }
-        headers = {"Authorization": f"Bearer {settings.isl_ai_api_key}"}
+        headers = {"Authorization": f"Bearer {config.api_key}"}
 
         try:
-            async with httpx.AsyncClient(timeout=settings.isl_ai_timeout_seconds) as client:
+            async with httpx.AsyncClient(timeout=config.timeout_seconds) as client:
                 response = await client.post(url, json=payload, headers=headers)
         except httpx.TimeoutException as exc:
             raise AITimeoutError(
-                f"AI 调用超时（上限 {settings.isl_ai_timeout_seconds:.0f} 秒），请稍后重试。"
+                f"AI 调用超时（上限 {config.timeout_seconds:.0f} 秒），请稍后重试。"
             ) from exc
         except httpx.HTTPError as exc:
-            raise AIProviderError(f"AI 服务连接失败：{exc.__class__.__name__}。请检查 ISL_AI_BASE_URL。") from exc
+            raise AIProviderError("AI 服务连接失败：请检查接入地址是否可达。") from exc
 
         if response.status_code != 200:
             raise AIProviderError(f"AI 服务返回错误状态 {response.status_code}，请检查模型名称和凭据。")

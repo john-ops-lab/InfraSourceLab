@@ -10,7 +10,7 @@
 LICENSE
 README.md
 docs/
-backend/              FastAPI + SQLAlchemy + SQLite + Faker 数据生成引擎与 51 个 pytest
+backend/              FastAPI + SQLAlchemy + SQLite + Faker 数据生成引擎与 60 个 pytest
 web/                  React 19 + TypeScript + Vite + Tailwind v4 + shadcn/ui 前端
 Dockerfile            单镜像：后端 + 内置前端静态产物
 docker-compose.yml    只向 127.0.0.1:8080 发布
@@ -25,16 +25,23 @@ Issue #1 的 MVP 闭环已可运行：
 → SQLite（PRAGMA user_version = 1）
 → Bearer Token REST API
 → JSON / CSV / XLSX 导出
-→ 创建、数据集列表、详情、设置界面
+→ 创建、数据集列表、详情、设置界面（管理员登录 + AI 模型配置页）
 ```
+
+### 后续特性：管理员登录与 AI 配置页（已实现）
+
+- 认证双通道：管理员登录会话令牌为主（PBKDF2 密码哈希、12 小时会话、令牌只存哈希），环境变量 `ISL_API_KEY` 作为备用；
+- 默认账户 `admin` / `admin123` 首次启动自动创建，不强制改密，设置页可自行修改；
+- `/api/v1/admin/ai-config` 仅管理员会话可用（API Key 访问返回 403），AI 配置持久化到 SQLite 并即时生效；
+- `/api/v1/status` 改为公开接口（仅返回布尔标志），供登录页与设置页在未认证时读取。
 
 ## 实现证据
 
 - 起始提交：`893a1e2`（实现开始前的 `main` 最新提交，已记录在 Issue #1）；
 - 结束提交：本次实现系列的最后一次提交，准确哈希记录在 Issue #1 完成报告中；
-- 后端测试：`cd backend && uv run pytest` → 51 passed；
+- 后端测试：`cd backend && uv run pytest` → 60 passed；
 - 前端单测：`cd web && npm test`（Vitest）→ 7 passed；
-- 端到端：`cd web && npx playwright test`（Playwright + Chromium，uvicorn 生产形态）→ 4 passed；
+- 端到端：`cd web && npx playwright test`（Playwright + Chromium，uvicorn 生产形态）→ 7 passed；
 - 浏览器验收：真实浏览器完成设置密钥 → 模板 → 生成 → CI/关系/API 与导出全流程，截图保存在本地验证目录，关键结果记录在 Issue #1；
 - 容器验证：镜像构建后以 `docker run` 验证 /health、SPA 深链、401 认证、两步 API、search_text 查询、三种导出与 `user_version=1`。
 
@@ -54,7 +61,8 @@ Issue #1 的 MVP 闭环已可运行：
 已知限制（详见 Issue #1 完成报告）：
 
 - 验证环境中无 AI 密钥，`from-prompt` 只验证了 503/校验路径与假 Provider 单测；
-- 本机 8080 被占用期间，容器验证改用 8091 发布端口，Compose 文件仍为 `127.0.0.1:8080:8080`。
+- 本机 8080 被占用期间，容器验证改用 8091 发布端口，Compose 文件仍为 `127.0.0.1:8080:8080`；
+- 管理员登录与 AI 配置特性的试用容器发布在 `127.0.0.1:8092`（容器 `isl-v2`），8091 容器保留 MVP 版本。
 
 ### Issue #2：可选增强设计，暂不开发
 

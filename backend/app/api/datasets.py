@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..auth.token import require_api_key
+from ..auth.token import require_auth
 from ..datasets import service
 from ..db.models import CIRecord, Dataset
 from ..limits import (
@@ -24,7 +24,7 @@ from ..limits import (
 from ..specs.models import SpecValidationError, parse_and_validate
 from .deps import get_session
 
-router = APIRouter(prefix="/api/v1/datasets", tags=["数据集"], dependencies=[Depends(require_api_key)])
+router = APIRouter(prefix="/api/v1/datasets", tags=["数据集"], dependencies=[Depends(require_auth)])
 
 
 class DatasetCreateRequest(BaseModel):
