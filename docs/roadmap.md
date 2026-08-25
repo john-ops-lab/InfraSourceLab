@@ -19,6 +19,7 @@
 第二阶段：Issue #2 可选增强
 简单拓扑
 + 基础数据质量
++ CMDB 使用示例
 ```
 
 不再采用“先设计完整平台，再逐步实现”的路线。
@@ -40,11 +41,15 @@
 
 计划交付：
 
-- 自然语言输入；
+- 一次性自然语言输入；
+- `POST /api/v1/specs/from-prompt`；
 - OpenAI-compatible Provider；
 - AI 转经过校验的 `GenerationSpec`；
 - 内置模板备用入口；
-- 简单修改类型数量和 seed。
+- 简单修改类型数量、关系 `strategy/coverage` 和 seed；
+- `POST /api/v1/datasets` 创建最终数据集。
+
+首版不建设多轮聊天，不要求 assistant-ui。
 
 ### 2.2 数据
 
@@ -53,19 +58,23 @@
 - 至少 12 个常用 CMDB CI 类型；
 - 常用字段；
 - 至少 8 类关系；
+- 关系策略只保留 `balanced`、`random_seeded`；
+- 关系覆盖方向使用 `coverage=from|to`；
 - 稳定 ID；
 - 相同规格和 seed 可重复；
+- 不允许重复边；
 - 万级数据冒烟测试；
 - SQLite 持久化。
 
-### 2.3 接口
+### 2.3 接口与搜索
 
 计划交付：
 
 - 一个环境变量 API Key；
 - Bearer Token；
-- 数据集、CI、关系和摘要接口；
+- 模板、规格、数据集、CI、关系和摘要接口；
 - 类型、搜索和分页筛选；
+- CI 受控 `search_text`，不直接模糊搜索整个 JSON；
 - FastAPI OpenAPI；
 - 可复制的 curl。
 
@@ -92,15 +101,20 @@ P1：XLSX
 - API 与导出；
 - API Key 和 Provider 状态。
 
-### 2.6 工程
+### 2.6 工程与数据库版本
 
 计划交付：
 
 - 一个 Docker 服务；
 - SQLite 数据卷；
+- SQLite `PRAGMA user_version = 1`；
+- 空数据库自动初始化；
+- 不兼容的已有数据库明确拒绝启动并提示备份、删除后重建；
 - 后端和前端测试；
 - Playwright；
 - Chrome DevTools MCP 真实浏览器验证。
+
+MVP 不引入 Alembic 或自动数据库迁移链。未来真实升级需要保留旧数据时，再建立独立 Issue，不把迁移职责混入 Issue #2。
 
 ### 2.7 第一阶段完成后
 
@@ -155,14 +169,16 @@ InfraSourceLab Bearer Token API
 
 不建设验证平台。
 
-### 3.4 数据库模式迁移策略
+### 3.4 明确不属于 Issue #2
 
-SQLite 会持久化用户数据集，后续表结构变更必须有迁移方案：
+Issue #2 不包含：
 
-- 数据库记录 schema 版本号；
-- 引入轻量迁移机制（如 Alembic 或手写版本化迁移脚本）；
-- 启动时自动迁移旧数据，不得要求用户手工改表或丢失已有数据集；
-- 不建设多分支迁移、在线 DDL 平台或复杂回滚工具链。
+- 数据库模式迁移；
+- Alembic；
+- 自动升级旧 SQLite；
+- 多轮 AI 聊天；
+- 协议模拟器；
+- 后台任务系统。
 
 ## 4. 未来方向
 
@@ -176,7 +192,9 @@ SQLite 会持久化用户数据集，后续表结构变更必须有迁移方案�
 - 更大数据规模；
 - 多 API Key；
 - 公网认证；
-- 更复杂拓扑。
+- 更复杂拓扑；
+- SQLite 自动迁移链；
+- 多轮 AI 创建交互。
 
 新增前必须回答：
 
@@ -205,9 +223,10 @@ Issues #3～#8 已关闭为“不计划实施”：
 ### Issue #1 允许
 
 ```text
-AI 规格生成
+一次性 AI 规格生成
 本地数据生成器
 SQLite
+PRAGMA user_version
 Bearer Token API
 JSON / CSV
 小型界面
@@ -224,6 +243,8 @@ JSON / CSV
 顺便建设任务和 Worker
 顺便建设验证器
 顺便建设插件或通用导入框架
+顺便建设多轮聊天
+顺便建设自动数据库迁移链
 ```
 
 ## 7. 完成判断
@@ -233,6 +254,7 @@ JSON / CSV
 ```text
 配置 API Key
 → 输入提示词或选择模板
+→ 获得并确认规格
 → 生成数据
 → 通过 REST 读取
 → 下载文件
