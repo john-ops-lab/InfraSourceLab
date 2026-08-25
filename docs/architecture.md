@@ -4,13 +4,14 @@
 
 InfraSourceLab 必须同时满足：
 
-1. **确定性**：同一 immutable Revision 在相同版本环境下可重复 Compile；
+1. **确定性**：同一 immutable Revision 在相同编译器/生成器/Driver-plan 版本下可重复 Compile；
 2. **Run 隔离**：同一 Compile 的多个 Run 不共享可变 Truth/Source/backend/fault state；
-3. **Compile / Run 分层**：确定性计划与运行时临时信息不能混在一个 Manifest；
-4. **可扩展**：新增 Source 主要增加 Driver；
-5. **不造协议轮子**：优先成熟 Simulator / real service；
-6. **可验证**：Truth / Projection / Observation / Verification 是一等模型；
-7. **低交互成本**：AI / Builder 普通入口，YAML 仅 Expert representation。
+3. **Compile / Run 分层**：确定性计划与运行时 ephemera 不混入同一个 Manifest；
+4. **Capability 分层**：产品/Driver 能力、Compile 需求、Agent 实际能力、Start admission 分开；
+5. **可扩展**：新增 Source 主要增加 Driver；
+6. **不造协议轮子**：优先成熟 Simulator / real service；
+7. **可验证**：Truth / Projection / Observation / Verification 是一等模型；
+8. **低交互成本**：AI / Builder 普通入口，YAML 仅 Expert representation。
 
 ---
 
@@ -26,7 +27,7 @@ Web
 Control (no Docker socket)
 │ Authoring / Scenario / Revision / Compile
 │ Truth / Projection / Driver Registry
-│ Run / Timeline / Observation / Verification
+│ Run / Admission / Timeline / Observation / Verification
 │ AI Gateway / Importers
 │
 ├─ PostgreSQL
@@ -34,15 +35,16 @@ Control (no Docker socket)
 └─ typed Agent API
       ↓
    Lab Agent (Docker privilege)
+   AgentCapabilities / runtime materialization
       ↓
-   per-Run Simulator / Real Service / Contract/Replay runtime
+   per-Run Simulator / Real Service / Contract/Replay
       ↓
    DLR / CMDB / Test Client
       ↓
    Observation / Verification
 ```
 
-前端开发闭环：Requirement → UI Skills → shadcn composition → implementation → Chrome DevTools MCP → fix → Playwright。
+Frontend loop：Requirement → UI Skills → shadcn composition → implementation → Chrome DevTools MCP → fix → Playwright。
 
 ---
 
@@ -50,13 +52,14 @@ Control (no Docker socket)
 
 ### Control
 
-负责：
-
 - unsaved Working Copy validate/estimate；
 - Scenario / immutable Revision；
 - deterministic Compile；
-- immutable Base Truth/Projection；
-- Run state / run-scoped Truth lineage；
+- Base Truth/Projection；
+- Driver Registry；
+- Compile Requirements；
+- Agent capability discovery + Run admission；
+- Run Truth/Projection lineage；
 - Verification；
 - AI/Import；
 - typed Agent commands。
@@ -65,14 +68,15 @@ Control (no Docker socket)
 
 唯一接触 Docker：
 
+- report actual AgentCapabilities；
 - allowlisted exact image/runtime；
-- per-run network/workspace/volumes；
-- runtime materialization；
+- per-run network/workspace/volume；
+- materialize Run；
 - Driver start/health/apply/stop/cleanup；
 - bounded logs；
 - reconcile/GC。
 
-禁止任意 shell/image/host mount。
+No arbitrary shell/image/host mount。
 
 ---
 
@@ -86,6 +90,8 @@ backend/app/
   truth/
   projection/
   drivers/
+  agents/
+  admission/
   runs/
   timeline/
   observations/
@@ -95,51 +101,7 @@ backend/app/
   api/
 ```
 
-### authoring
-
-处理未保存 Working Copy：parse、safe normalize、schema/semantic/capability/security validation、estimate、semantic digest。无需 Scenario ID。
-
-### scenario
-
-Scenario metadata、Working Copy wire model、immutable Revision、raw/normalized provenance。
-
-### compiler
-
-只接受 immutable Revision：
-
-```text
-Revision
- → normalize/validate
- → deterministic allocation
- → Base Truth V0
- → Base Source Projections
- → deterministic Driver Plans / artifacts
- → Compile Manifest
-```
-
-Compiler 不启动容器，也不生成 host port / container ID / runtime secret。
-
-### runs
-
-从成功 Compile 创建一次独立 materialization：
-
-```text
-Compile Manifest
-  ↓
-Run materialization
-  ↓
-Run Manifest / RunSource runtime state
-  ↓
-Agent runtime
-```
-
-### truth / projection
-
-```text
-Compile Base Truth/Projection   immutable
-Run Truth Version lineage       run-scoped
-Run Source Projection versions  run-scoped
-```
+不要求逐字目录名，但职责必须能表达上述边界。
 
 ---
 
@@ -149,7 +111,7 @@ Run Source Projection versions  run-scoped
 AI Create ────────┐
 Visual Builder ───┼──→ Semantic Working Copy
 Expert YAML ──────┘          │
-                             ├─ Validate
+                             ├─ Safe parse/validate
                              ├─ Estimate
                              └─ semantic_digest
                              ↓
@@ -158,7 +120,7 @@ Expert YAML ──────┘          │
                     Immutable Revision
 ```
 
-Builder patch known paths and preserves untouched valid advanced fields。Raw YAML comments/formatting 不保证逐字符 round-trip；语义必须保留。
+Builder patches known typed paths and preserves legal advanced fields。YAML comments/formatting 不保证逐字符 round-trip；语义必须保留。
 
 ---
 
@@ -166,14 +128,14 @@ Builder patch known paths and preserves untouched valid advanced fields。Raw YA
 
 ```text
 source_digest   = raw source/YAML hash
-semantic_digest = canonical normalized typed document hash
+semantic_digest = canonical normalized typed-document hash
 ```
 
 AI Candidate uses `base_semantic_digest`；current digest 不一致时 M1 起禁止 blind Apply。
 
 ---
 
-## 7. API 边界
+## 7. Authoring / Persistence / Compile APIs
 
 ### Unsaved Authoring
 
@@ -182,6 +144,8 @@ POST /api/authoring/validate
 POST /api/authoring/estimate
 POST /api/ai/scenario-candidate   # M1
 ```
+
+No Scenario ID required；no runtime permission created。
 
 ### Persistence
 
@@ -195,45 +159,28 @@ GET      /api/scenarios/{id}/revisions/{revision_id}
 ### Compile
 
 ```text
-POST /api/compiles    # requires scenario_revision_id
+POST /api/compiles    # scenario_revision_id
 GET  /api/compiles/{id}
 ```
 
 ### Run
 
 ```text
-POST /api/runs        # requires successful compile_id
+POST /api/runs        # compile_id + target/default Agent selection as applicable
 GET  /api/runs/{id}
 POST /api/runs/{id}/stop
 POST /api/runs/{id}/cleanup
 ```
 
-### Base Truth
-
-```text
-/api/compiles/{id}/truth/...
-```
-
-### Run evolving Truth — M2
-
-```text
-/api/runs/{id}/truth/versions
-/api/runs/{id}/truth/nodes?version=...
-/api/runs/{id}/truth/edges?version=...
-/api/runs/{id}/sources/{source}/projection?version=...
-```
-
-Observation/Verify target Run and selected version/mode。
+Start request cannot carry a modified Scenario payload to bypass Compile。
 
 ---
 
 ## 8. Compile Manifest vs Run Manifest
 
-这是可复现性与多 Run 隔离的关键。
+### Compile Manifest — deterministic / no secrets / host-independent where possible
 
-### Compile Manifest — deterministic / shareable / no secrets
-
-应包含：
+Contains：
 
 ```text
 scenario_revision_id
@@ -242,146 +189,197 @@ schema / normalization / compiler version
 seed / generator versions
 Base Truth digest/count
 Base Source Projection digests
-Driver names + exact backend versions/capabilities
-resource requirements / internal service ports
-content-addressed deterministic artifacts/plans
+Driver versions / exact backend versions / semantic capabilities
+CompileRequirements
+content-addressed deterministic Driver Plans/artifacts
 ```
 
-**不应包含：**
+Must NOT contain：
 
 ```text
-host published port
-runtime container/network ID/name
-random generated password/token/community/key
+run_id
+host-published port
+container/network/volume runtime IDs
+per-Run random password/token/community/key
 runtime endpoint
-run_id
-runtime-native object IDs generated only after start
-wall-clock-only values that participate in deterministic digest
+runtime-only native IDs
+active runtime faults/current Run Truth version
 ```
 
-Compile artifacts can be reused/copied into multiple Run workspaces only if they contain no Run secret/state。
+Compile plan can specify internal service-port/protocol needs, required images/binaries, expected resources, architecture constraints, but not allocate the host runtime itself。
 
-### Run Manifest / RunSource — per-Run ephemeral materialization
+### Run Manifest / RunSource — per-Run materialization
 
-Run start/materialization produces：
+Contains：
 
 ```text
 run_id
-Agent assignment
-container/network/volume names & IDs
+target Agent ID
+container/network/volume IDs/names
 host published ports
 runtime endpoint
-per-Run generated credentials / secret references
-runtime native IDs / identity mapping
-runtime backend state/version
-current Truth/Projection version
+per-Run generated credential / secret reference
+runtime native identity map
+actual backend/runtime version confirmation
+current Truth / Projection version
 active faults
 health/status
 ```
 
-Secrets should be stored via appropriate secret/config storage and not dumped into user-visible manifest/logs。
-
-### Why this matters
-
-```text
-Compile C12
-  deterministic plan
-   ├───────────────┐
-   ↓               ↓
-Run A             Run B
-port 32101        port 32777
-secret A          secret B
-network A         network B
-```
-
-同一 Compile 不因不同 host port/secret 产生不同 Compile digest，也不会因固定端口/credential 冲突无法多 Run。
+Same Compile → multiple isolated Runs without port/credential collision or Compile-digest drift。
 
 ---
 
-## 9. Compile Base Truth 与 Run Truth
+## 9. DriverCapabilities vs CompileRequirements vs AgentCapabilities
+
+这是未来 remote Agent 不返工的关键。
+
+### DriverCapabilities — 产品/版本层
+
+描述一个 Driver + exact backend version **理论上/经测试能做什么**：
+
+```text
+protocols/transports
+supported object/features
+run-scoped actions
+protocol faults
+compatible FaultBackends
+required image/binary families
+supported architectures (known)
+resource-hint model
+fidelity limitations
+```
+
+来自 exact pinned version + integration tests，不来自 upstream main 猜测。
+
+### CompileRequirements — 场景需求层
+
+Compile 从 Scenario + Driver Plans 汇总“要运行这个 Compile 需要什么”：
+
+```text
+required Drivers/backends
+protocol/transport
+architecture constraints if any
+required images/binaries
+minimum/estimated CPU/memory/disk
+container count
+internal ports
+special platform features
+FaultBackend requirements
+```
+
+这是 deterministic Compile output 的一部分，不包含实际 host allocation。
+
+### AgentCapabilities — 运行主机层
+
+Agent 实际报告：
+
+```text
+agent_id
+OS / arch
+runtime/Docker version
+available/pullable allowlisted backends
+installed binaries
+supported FaultBackends/transports
+CPU/memory/disk availability/hints
+published-port capacity
+platform-specific limitations
+```
+
+M1 单 Agent 可以很简单，但模型必须独立存在；M6 再增加认证 remote Agent/多 Agent 管理。
+
+### Start Admission
+
+```text
+CompileRequirements
+       vs
+AgentCapabilities
+       ↓
+PASS / WARNING / REJECT diagnostics
+```
+
+只有 admission PASS 才进入 Run materialization。
+
+### Why Compile should not blindly bind current host
+
+Driver 在产品层 supported，但当前 Mac Agent 可能因 arch/image/resource 不可运行；未来 remote Linux Agent 可能可运行。
+
+因此要区分：
+
+```text
+unsupported by Driver/product → Compile error
+supported but current Agent unavailable/incompatible → Start admission error / authoring warning
+```
+
+M1 单机 UI 可以同时展示当前 Agent feasibility，但不能把 host-specific ephemera写进 Compile semantic digest。
+
+---
+
+## 10. Compile Base Truth 与 Run Truth
 
 ```text
 Revision R7
  ↓
 Compile C12
 Base Truth V0 (immutable)
- ├─────────────────────┐
- ↓                     ↓
-Run A                  Run B
-V0→V1→V2               V0→V1
+ ├────────────────────┐
+ ↓                    ↓
+Run A                 Run B
+V0→V1→V2              V0→V1
 ```
 
-- runtime action never mutates Base V0；
-- Run A/B independent；
-- Source freshness/faults run-scoped；
-- historical Verification selects explicit Run/version。
-
-DB/schema can use snapshot+delta/materialization but ownership cannot blur。
+Runtime action never mutates Base；Runs independent；Source freshness/faults run-scoped；Verification selects explicit Run/version。
 
 ---
 
-## 10. Driver Contract 分层
+## 11. Driver Contract 分层
 
-概念上 Driver 有两个职责层：
-
-### Deterministic compile/render side
+### Compile/render side
 
 ```text
 capabilities()
 validate(compiled_source)
-render_plan(compiled_source) → deterministic DriverPlan/artifacts
+render_plan(compiled_source) → deterministic DriverPlan/artifacts + Requirements
 ```
 
-不得需要 Docker socket / host port / runtime credential。
+No Docker socket/host port/runtime secret required。
 
 ### Agent/runtime side
 
 ```text
-materialize(run_context, driver_plan) → RunSource materialization
-start
-health
+probe_agent_capability()
+materialize(run_context, driver_plan)
+start / health
 apply(run-scoped action)
-stop
-cleanup
+stop / cleanup
 ```
 
-具体 Python classes/modules 可以合并或拆分，但调用边界必须保证 Control 不需要 Docker 权限，Compile output 不掺 runtime ephemera。
-
-### Capability authority
-
-```text
-exact pinned backend version
- → integration tests
- → DriverCapabilities
- → Compiler/UI
-```
-
-上游 main != current release capability。
+Python modules/classes can vary but security/determinism boundary cannot。
 
 ---
 
-## 11. Fault Backend / Transport capability
+## 12. Fault Backend / Transport capability
 
-Toxiproxy is a shared **TCP** fault backend。Fault availability = Source transport/protocol + DriverCapabilities + FaultBackendCapabilities + Agent platform capability。
+Toxiproxy is shared **TCP** fault backend。Fault availability = Source transport + DriverCapabilities + CompileRequirements + AgentCapabilities/FaultBackendCapabilities。
 
-SNMP default UDP must not falsely inherit TCP-only fault options。真正 UDP network backend 另行设计。
+SNMP default UDP does not falsely inherit TCP faults。Dedicated UDP backend later if explicitly designed。
 
 ---
 
-## 12. Run 生命周期
+## 13. Run lifecycle
 
 ```text
 Working Copy
  ↓ Save
 REVISION
  ↓ Compile
-COMPILED (Base V0 + deterministic Compile Manifest)
- ↓ Start / Materialize
-PREPARING
- ↓
-STARTING
+COMPILED (Base V0 + Compile Manifest + Requirements)
+ ↓ select/default Agent + Admission
+ADMITTED
+ ↓ Materialize
+PREPARING / STARTING
  ↓ health
-READY (per-Run runtime state)
+READY
  ↓ timeline/fault/observation
 READY
  ↓ Stop
@@ -390,11 +388,11 @@ STOPPED
 CLEANED
 ```
 
-失败进入 FAILED；cleanup/reconcile 仍 run-scoped。
+`ADMITTED` can be explicit state or logical gate; implementation naming can differ, but admission check cannot be skipped。
 
 ---
 
-## 13. Per-Run isolation
+## 14. Per-Run isolation
 
 Labels：
 
@@ -405,56 +403,55 @@ io.infrasourcelab.driver=<driver>
 io.infrasourcelab.source=<source>
 ```
 
-Default endpoint internal/127.0.0.1；no default 0.0.0.0；cleanup only target Run。
+Default endpoint internal/127.0.0.1；cleanup only target Run。
 
 ---
 
-## 14. 数据存储
+## 15. Storage ownership
 
-PostgreSQL 16。Domain ownership 至少能表达：
+PostgreSQL domain must express：
 
 ```text
-scenarios
-scenario_revisions
-compiles / compile_manifests
+scenarios / revisions
+compiles / compile manifests / requirements
 compile Base Truth/Projection
-lab_runs
-run_manifests / run_sources
+agents / capability snapshots (minimal M1, richer M6)
+lab_runs / run manifests / run sources
 run Truth Versions / Projection Versions
-run_events
-observations
-verification_reports
+run events
+observations / verification reports
 ```
 
-具体表名可优化。
+Exact tables may differ。
 
-Artifacts/content-addressed plans stored outside giant JSONB；DB stores digest/path/metadata。
-
----
-
-## 15. Frontend IA / Design System
-
-Create Lab / Scenarios / Runs / Sources / Verification / Settings；Scenario detail includes Builder/World/Sources/Timeline/Runs/Verify/Expert YAML。
-
-General Importer becomes user-facing in M5, not earlier fake CTA。
-
-Runtime UI: shadcn/Tailwind + assistant-ui; one committed `components.json`/theme baseline from M0；no Ant Design/DLR UI。
-
-详见 `docs/frontend-design.md` 与 `docs/qoder-frontend-tooling.md`。
+Artifacts/content-addressed plans live outside giant JSONB; DB stores paths/digests/metadata。
 
 ---
 
-## 16. AI
+## 16. Frontend / AI
 
-M1 OpenAI-compatible provider abstraction, optional to core。AI can validate/estimate/propose but not auto Save/Compile/Run/Fault/Docker/secret。
+Create Lab / Scenarios / Runs / Sources / Verification / Settings；Scenario detail Builder/World/Sources/Timeline/Runs/Verify/Expert YAML。
 
-M5 adds attachments/imports/context/tools/frozen snapshot/richer conflict/generative UI。
+M0 establishes one shadcn `components.json`/theme/base/icon baseline；assistant-ui uses same system。No Ant Design/DLR UI。
+
+M1 AI Provider optional；AI can validate/estimate/propose but cannot Save/Compile/Run/Fault/Docker/secret。
+
+UI can show：
+
+```text
+Driver supported
+Current Agent: available / incompatible / insufficient resources
+```
+
+without conflating them。
 
 ---
 
 ## 17. Browser Gate
 
-UI Wave: UI Skills → shadcn reuse → Chrome DevTools MCP (flows/screenshots/Console/Network/1024–1920/performance) → Playwright regression。
+UI Wave: UI Skills → shadcn reuse → Chrome DevTools MCP (flow/screenshots/Console/Network/1024–1920/performance) → Playwright。
+
+M1 Run flow must exercise admission failure and success at least with fake/simulated Agent capability fixtures if current machine cannot cover both。
 
 ---
 
@@ -462,16 +459,18 @@ UI Wave: UI Skills → shadcn reuse → Chrome DevTools MCP (flows/screenshots/C
 
 1. AI-first / Builder / Expert YAML；
 2. unsaved validate/estimate；
-3. Compile only immutable Revision；
-4. **Compile Manifest deterministic and free of Run secrets/host ports/runtime IDs**；
-5. Run only successful Compile；
-6. **Run Manifest contains per-Run ephemeral materialization**；
-7. Compile Base Truth immutable；
-8. runtime Truth/Projection per-Run isolated；
-9. semantic_digest stale safety；
-10. mature protocols not reimplemented；
-11. Control no Docker socket；
-12. Agent typed/allowlisted；
-13. AI no runtime write privilege；
-14. one shadcn design system；
-15. capabilities reflect exact tested versions/transports。
+3. safe bounded parser；
+4. Compile only immutable Revision；
+5. Compile Manifest deterministic/no Run ephemera；
+6. DriverCapabilities ≠ CompileRequirements ≠ AgentCapabilities；
+7. Start requires admission PASS；
+8. Run Manifest owns ephemeral materialization；
+9. Compile Base Truth immutable；
+10. Run Truth/Projection isolated；
+11. semantic_digest stale safety；
+12. no mature protocol reimplementation；
+13. Control no Docker socket；
+14. Agent typed/allowlisted；
+15. AI no runtime write privilege；
+16. one shadcn design system；
+17. capability reflects exact tested version + transport/platform。
