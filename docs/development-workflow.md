@@ -39,35 +39,18 @@ docs/development-workflow.md
 
 已关闭的 Issues #3～#8 不得作为待开发清单。
 
-## 3. 开发过程中必须使用的前端工具
+## 3. 开发过程中必须遵循的前端工具约束
 
-Issue #1 和后续前端功能开发，必须实际使用以下四项工具或项目：
+Issue #1 和后续前端功能开发，必须遵循 [`docs/qoder-frontend-tooling.md`](qoder-frontend-tooling.md) 的工具约束（UI Skills、shadcn/ui、Chrome DevTools MCP、assistant-ui），不得只在文档中声明而不在实际开发和验收中使用。要点：
 
-1. **UI Skills**  
-   https://github.com/ibelick/ui-skills
-
-   用于编码前确认主用户任务、信息层级、组件顺序、尺寸、状态和响应式设计。不能先随意完成页面，再在报告中补写“已使用 UI Skills”。
-
-2. **shadcn/ui**  
-   https://github.com/shadcn-ui/ui
-
-   作为组件和视觉体系的首选基础。常见按钮、表单、表格、页签、抽屉、对话框、提示、空状态和加载状态应先查询并复用 shadcn/ui，不得同时引入第二套大型通用组件库。
-
-3. **Chrome DevTools MCP**  
-   https://github.com/ChromeDevTools/chrome-devtools-mcp
-
-   用于让 Codex、Claude 或其他兼容代理直接操作真实 Chrome，完成点击、输入、截图、Console、Network、性能和响应式检查。构建成功、单元测试或 Playwright 通过都不能替代该门槛。
-
-4. **assistant-ui**  
-   https://github.com/assistant-ui/assistant-ui
-
-   用于创建页面中的 AI 输入、用户和助手消息、加载、取消、错误、重试以及结构化 `GenerationSpec` 建议。不得重新手写一套同类通用聊天界面。
+- UI Skills：编码前完成主任务、信息层级、尺寸和状态的设计判断，不能事后补写；
+- shadcn/ui：组件和视觉体系的首选基础，不得引入第二套大型通用组件库；
+- Chrome DevTools MCP：真实浏览器验收是必过门槛，构建成功、单元测试或 Playwright 通过都不能替代；
+- assistant-ui：多轮对话式 AI 交互的首选实现；若创建页交互只是“一次提示 → 结构化规格建议”，允许用 shadcn/ui 轻量组件实现，同一交互不得重复造两套。
 
 Playwright 仍用于自动化回归，但与 Chrome DevTools MCP 的真实浏览器验收缺一不可。
 
 如果 Qoder 当前环境无法直接调用 Chrome DevTools MCP，必须由能够调用它的 Codex、Claude 或其他兼容代理完成最终浏览器检查。在该证据完成前，前端不能标记为“等待审查”。
-
-更详细的执行约束见 [`docs/qoder-frontend-tooling.md`](qoder-frontend-tooling.md)。
 
 ## 4. 开始开发前
 
@@ -91,7 +74,7 @@ Issue #1 开始实现。
 
 - 已读取 UI Skills；
 - 已确定 shadcn/ui 初始化方案；
-- 已确认 assistant-ui 的创建页集成边界；
+- 已确定创建页 AI 交互的实现方式（assistant-ui 或 shadcn/ui 轻量组件）；
 - 已确认 Chrome DevTools MCP 的调用方式；
 - 已确认最终 Playwright 回归路径。
 
@@ -107,11 +90,8 @@ InfraSourceLab 是一个精简的单体 CMDB 测试数据生成工具，不是�
 必须优先完成：
 自然语言或模板 → 经过校验的 GenerationSpec → 本地确定性生成 CI 与关系 → SQLite → Bearer Token REST API → JSON/CSV → 简单可用界面。
 
-前端开发必须实际使用：
-1. UI Skills：https://github.com/ibelick/ui-skills
-2. shadcn/ui：https://github.com/shadcn-ui/ui
-3. Chrome DevTools MCP：https://github.com/ChromeDevTools/chrome-devtools-mcp
-4. assistant-ui：https://github.com/assistant-ui/assistant-ui
+前端开发必须遵循 docs/qoder-frontend-tooling.md 的工具约束：
+UI Skills（https://github.com/ibelick/ui-skills）、shadcn/ui（https://github.com/shadcn-ui/ui）、Chrome DevTools MCP（https://github.com/ChromeDevTools/chrome-devtools-mcp）必须真实使用；创建页 AI 交互优先 assistant-ui（https://github.com/assistant-ui/assistant-ui），若交互形态为一次性规格回显，可用 shadcn/ui 轻量组件实现。
 
 Playwright 用于固化回归，但不能替代 Chrome DevTools MCP 的真实 Chrome 验收。
 
@@ -164,7 +144,7 @@ RBAC / OAuth / SSO
 读取 UI Skills
 → 明确主用户任务和页面层级
 → 查询并复用 shadcn/ui 组件
-→ 使用 assistant-ui 实现创建页 AI 交互
+→ 按工具约束实现创建页 AI 交互（assistant-ui 或 shadcn/ui 轻量组件）
 → 在真实 Chrome 中通过 Chrome DevTools MCP 操作
 → 检查截图、Console、Network、性能和响应式
 → 修复问题
@@ -177,7 +157,7 @@ RBAC / OAuth / SSO
 
 - UI Skills 的哪些判断真实改变了布局或交互；
 - 使用了哪些 shadcn/ui 组件，哪些控件必须自定义以及原因；
-- assistant-ui 负责了哪些界面状态；
+- 创建页 AI 交互的实现方式（assistant-ui 或 shadcn/ui 轻量组件）及原因；
 - Chrome DevTools MCP 由哪个代理执行，检查了哪些视口和流程；
 - Console、Network、性能和响应式结果；
 - 哪些主路径已经进入 Playwright。
@@ -206,7 +186,7 @@ XLSX、自定义类型和额外模板不得阻塞核心闭环。
 2. 后端测试通过；
 3. 前端类型检查、单元测试和构建通过；
 4. Playwright 主路径通过；
-5. 已实际使用 UI Skills、shadcn/ui 和 assistant-ui；
+5. 已实际使用 UI Skills、shadcn/ui，并按工具约束完成创建页 AI 交互；
 6. Chrome DevTools MCP 已完成真实 Chrome 主流程、截图、Console、Network、性能和响应式检查；
 7. Docker 或文档规定的本地启动方式可复现；
 8. README 和状态文档与真实代码一致；
@@ -233,7 +213,7 @@ Issue #1 实现完成，等待外部审查。
 前端必用工具证据：
 - UI Skills 关键决定：...
 - shadcn/ui 初始化与组件：...
-- assistant-ui 集成范围：...
+- AI 创建交互的实现方式（assistant-ui 或 shadcn/ui 轻量组件）及选择原因；
 - Chrome DevTools MCP 执行代理、版本、视口和结果：...
 
 测试命令与结果：
@@ -276,7 +256,7 @@ Issue #1 实现完成，等待外部审查。
 - API 是否方便 CMDB、数据导入程序和测试脚本使用；
 - 大数据是否采用分页；
 - AI 和 API Key 是否泄露；
-- UI Skills、shadcn/ui、assistant-ui 是否真实使用而非仅写入文档；
+- UI Skills、shadcn/ui 是否真实使用而非仅写入文档，创建页 AI 交互是否符合工具约束；
 - Chrome DevTools MCP 的真实浏览器证据是否完整；
 - 前端是否存在 Console、Network、性能或响应式问题；
 - README、Issue 和代码是否一致。
@@ -295,7 +275,7 @@ Issue #1 实现完成，等待外部审查。
 
 不得把 Issue #2 与 Issue #1 并行实现。
 
-Issue #2 如果启动，仍然必须使用同一套 UI Skills、shadcn/ui、Chrome DevTools MCP 和 assistant-ui 边界；其中 assistant-ui 只在确有 AI 交互时使用，不为拓扑页强行增加聊天入口。
+Issue #2 如果启动，仍然必须遵循同一套前端工具约束（见 [`qoder-frontend-tooling.md`](qoder-frontend-tooling.md)）；其中 assistant-ui 只在确有多轮 AI 交互时使用，不为拓扑页强行增加聊天入口。
 
 ## 14. 状态真实性规则
 

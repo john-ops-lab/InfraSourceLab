@@ -6,9 +6,7 @@
 
 ## 1. 当前决策
 
-InfraSourceLab MVP 不模拟 vCenter、SNMP、Kubernetes、Redfish、云 API 或数据库协议。
-
-它计划生成统一的 CMDB 配置数据，并通过以下方式提供给外部系统：
+MVP 的产品范围和“明确不做”以 [`product.md`](product.md) 为唯一权威，本文不重复。本文只补充一条核心决策：不模拟任何基础设施协议，只生成统一的 CMDB 配置数据，并通过以下方式提供给外部系统：
 
 ```text
 带认证的 REST API
@@ -119,7 +117,7 @@ one_to_many    一对多连接
 - 起点和终点都存在；
 - 关系类型合法；
 - 没有意外悬空；
-- 重复边符合规则；
+- 不存在重复边（相同 `(类型, 起点, 终点)` 只保留一条）；
 - 数量摘要正确。
 
 ## 6. 数据规模
@@ -175,6 +173,17 @@ page_size
 
 `q` 首版只匹配 ID、名称和有限常用属性，不建设通用 JSON 查询语言。
 
+实现方式：
+
+```text
+ci_id、name       普通列匹配，可配合 (dataset_id, name) 索引
+hostname、ip_address、management_ip、
+serial_number、code
+                  有限的属性白名单，对 attributes_json 做 LIKE
+```
+
+不引入 SQLite FTS5、json_each 全量扫描或通用 JSON 查询；若万级规模下实测过慢，再单独优化。
+
 关系查询计划支持：
 
 ```text
@@ -195,24 +204,7 @@ FastAPI 自动生成 OpenAPI。产品界面计划提供：
 
 ## 8. 认证策略
 
-首版只使用：
-
-```text
-ISL_API_KEY
-Authorization: Bearer <key>
-```
-
-它足以覆盖本地或可信内网开发场景。
-
-不实现：
-
-- API Key 增删改查；
-- 多用户；
-- 权限范围；
-- OAuth、OIDC 或 SSO；
-- 刷新令牌。
-
-如果未来需要公网部署，再单独设计认证，不拖慢本地 MVP。
+认证设计以 [`architecture.md`](architecture.md) 第 7 节为唯一权威：单一环境变量 `ISL_API_KEY`、Bearer Token、安全字符串比较、错误返回 401、日志不打印 Key。本文不重复具体条目；首版不建设用户系统、多 Key 或 OAuth，足以覆盖本地或可信内网开发场景。
 
 ## 9. 导出策略
 
@@ -292,14 +284,4 @@ MVP 真正实现并通过 CMDB、数据导入程序或测试脚本实际使用�
 
 ## 13. 停止规则
 
-当 Issue #1 能真实完成以下闭环时就停止扩展，进入 CMDB 实际使用和外部审查：
-
-```text
-自然语言或模板
-→ 规格
-→ 数据集
-→ Bearer Token API
-→ 导出
-```
-
-不得在同一开发波次中追加拓扑、协议模拟、故障、验证、导入器、远程运行或企业认证。
+扩展停止条件和路线原则以 [`roadmap.md`](roadmap.md) 为唯一权威：Issue #1 完成“自然语言或模板 → 规格 → 数据集 → Bearer Token API → 导出”闭环后停止扩展，进入 CMDB 实际使用和外部审查，不得在同一开发波次中追加新功能。

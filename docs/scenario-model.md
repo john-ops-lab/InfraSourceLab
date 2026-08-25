@@ -290,7 +290,7 @@ one_to_many       一对多连接
 - `from_id` 和 `to_id` 必须引用当前数据集记录；
 - 关系 ID 必须稳定；
 - 默认不生成自环；
-- 是否允许重复边必须明确。
+- 不允许重复边：同一数据集中相同的 `(type, from_ci_id, to_ci_id)` 只保留一条。生成器在连接阶段去重，数据库对 `(dataset_id, type, from_ci_id, to_ci_id)` 加唯一约束。
 
 ## 8. 确定性
 

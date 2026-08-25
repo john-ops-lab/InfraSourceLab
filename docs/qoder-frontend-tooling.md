@@ -6,7 +6,7 @@
 
 ## 1. 必须使用的工具
 
-InfraSourceLab 的前端开发必须使用以下四项工具或项目。它们不是“可参考资料”，而是 Issue #1 和后续前端功能的正式开发要求。
+InfraSourceLab 的前端开发必须使用以下四项工具或项目。它们不是“可参考资料”，而是 Issue #1 和后续前端功能的正式开发要求。其中 assistant-ui 的使用以创建页交互形态为前提，见 1.4。
 
 ### 1.1 UI Skills
 
@@ -88,8 +88,9 @@ https://github.com/assistant-ui/assistant-ui
 
 使用要求：
 
-- Issue #1 的 AI 创建体验必须基于 assistant-ui；
-- 不得重新手写一套通用聊天消息、输入区和运行状态框架；
+- 创建页 AI 交互优先基于 assistant-ui；若交互形态最终确认为一次性“提示词 → 结构化规格建议”而非多轮对话，允许用 shadcn/ui 轻量组件实现，不必引入聊天框架；
+- 无论采用哪种实现，都必须覆盖输入、加载、取消、错误和重试状态，不得重新手写一套通用聊天消息框架；
+- 同一交互不得重复造两套；选择轻量实现时，必须在 Issue 完成报告中说明理由；
 - 可以围绕产品需要定制结构化建议卡片，但不能把 assistant-ui 扩张成多会话 AI 平台；
 - AI 输出必须经过后端 `GenerationSpec` 校验，界面不能直接相信模型文本。
 
@@ -169,12 +170,12 @@ Badge
 
 这些是组件名，实施时先查询当前 shadcn registry 和官方文档。只有现成组件不能解决时才自定义基础控件。
 
-## 5. assistant-ui 使用要求
+## 5. AI 创建交互使用要求
 
-assistant-ui 只用于创建页面：
+创建页 AI 交互优先使用 assistant-ui；若交互形态为一次性规格回显，可用 shadcn/ui 轻量组件实现。无论哪种实现，只用于创建页面：
 
 - 输入区；
-- 消息；
+- 消息或结果展示；
 - 加载、取消和错误；
 - 结构化 `GenerationSpec` 建议；
 - 重试。
@@ -187,7 +188,7 @@ assistant-ui 只用于创建页面：
 - 复杂上下文助手；
 - Agent 执行。
 
-assistant-ui 必须使用同一套 shadcn 和 Tailwind 语义变量，不能形成第二套 AI 视觉系统。
+若使用 assistant-ui，它必须使用同一套 shadcn 和 Tailwind 语义变量，不能形成第二套 AI 视觉系统。
 
 ## 6. 数据表格要求
 
@@ -273,7 +274,7 @@ Issue #1 真正实现后，用中文记录：
 
 - UI Skills 的 3～5 条关键决定；
 - shadcn/ui 的初始化配置、主要组件和自定义组件原因；
-- assistant-ui 的集成方式及其负责的界面范围；
+- 创建页 AI 交互的实现方式（assistant-ui 或 shadcn/ui 轻量组件）、选择理由及其负责的界面范围；
 - Chrome DevTools MCP 的版本或提交、执行代理和检查路径；
 - 检查宽度、Console、Network、性能和响应式结果；
 - Playwright 测试命令和结果；

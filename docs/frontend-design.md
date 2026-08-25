@@ -19,7 +19,7 @@
 
 ## 2. 必须使用的设计与组件组合
 
-Issue #1 以及后续前端功能必须实际使用以下四项工具或项目：
+Issue #1 以及后续前端功能必须实际使用以下工具或项目（详细执行约束见 [`qoder-frontend-tooling.md`](qoder-frontend-tooling.md)）：
 
 1. **UI Skills**  
    https://github.com/ibelick/ui-skills
@@ -39,7 +39,7 @@ Issue #1 以及后续前端功能必须实际使用以下四项工具或项目�
 4. **assistant-ui**  
    https://github.com/assistant-ui/assistant-ui
 
-   用于创建页中的自然语言输入、用户和助手消息、加载、取消、错误、重试以及结构化 `GenerationSpec` 建议。不得重新手写一套同类通用聊天界面。
+   创建页多轮对话式 AI 交互的首选实现，负责自然语言输入、用户和助手消息、加载、取消、错误、重试以及结构化 `GenerationSpec` 建议。若交互形态最终确认为一次性“提示词 → 结构化规格建议”，允许用 shadcn/ui 轻量组件实现，不必引入聊天框架；同一交互不得重复造两套。
 
 完整分工：
 
@@ -59,11 +59,12 @@ Playwright 和 Chrome DevTools MCP 缺一不可：前者负责稳定回归，后
 React + TypeScript + Vite
 Tailwind CSS v4
 shadcn/ui
-assistant-ui
-i18next
+assistant-ui（仅当创建页采用多轮对话交互时）
 Vitest + Testing Library
 Playwright
 ```
+
+首版界面只做中文，不引入 i18next 或其他多语言框架。
 
 明确不使用：
 
@@ -265,9 +266,9 @@ MVP 不做账号管理。
 
 Key 可以放在内存或 `sessionStorage`，不得写入构建产物、URL、日志或普通数据库。
 
-## 8. assistant-ui 使用边界
+## 8. 创建页 AI 交互边界
 
-assistant-ui 只服务创建页：
+创建页 AI 交互优先用 assistant-ui，一次性规格回显形态可用 shadcn/ui 轻量组件。无论哪种实现，只服务创建页：
 
 - 输入区；
 - 用户和助手消息；
