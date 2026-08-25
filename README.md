@@ -72,6 +72,34 @@ AI 只负责把自然语言转换成结构化规格，不逐条生成上万条�
 
 Issue #2 中的简单拓扑和少量脏数据开关不是 #1 的前置条件。
 
+## 开发过程中必须使用的前端工具
+
+Issue #1 以及后续所有前端功能开发，必须使用下面四项工具或项目；它们不是可选参考，也不能只写进文档而不在实际开发和验收中使用。
+
+1. **UI Skills**  
+   https://github.com/ibelick/ui-skills
+
+   用于开发前的界面设计工程工作，包括确认主用户任务、信息层级、组件排布、页面尺寸、状态设计和响应式策略。开始写页面代码前，应先按 UI Skills 完成必要的设计判断，并在 Issue 完成报告中记录关键决定。
+
+2. **shadcn/ui**  
+   https://github.com/shadcn-ui/ui
+
+   作为前端组件和视觉体系的首选基础。实现按钮、表单、表格、页签、抽屉、对话框、空状态、加载状态等常见界面时，应先查询并复用 shadcn/ui 组件，再考虑自定义基础控件。不得同时引入第二套大型通用组件库。
+
+3. **Chrome DevTools MCP**  
+   https://github.com/ChromeDevTools/chrome-devtools-mcp
+
+   用于让 Codex、Claude 或其他兼容开发代理直接操作真实 Chrome 页面，完成点击、输入、截图、Console、Network、性能和响应式检查。前端不能只以“构建通过”或 Playwright 通过作为完成依据；Chrome DevTools MCP 的真实浏览器检查是必过门槛。
+
+4. **assistant-ui**  
+   https://github.com/assistant-ui/assistant-ui
+
+   用于创建页中的 AI 助手界面，包括输入区、用户和助手消息、加载、取消、错误、重试以及结构化 `GenerationSpec` 建议。不得为同类功能重新手写一套通用聊天界面。
+
+Playwright 继续用于自动化回归，但不能替代 Chrome DevTools MCP 的真实浏览器验收。若当前主开发工具无法直接调用 Chrome DevTools MCP，必须由能够调用它的 Codex、Claude 或其他兼容代理完成最终浏览器门槛，之后才能把前端标记为“等待审查”。
+
+详细约束见 [`docs/qoder-frontend-tooling.md`](docs/qoder-frontend-tooling.md)。
+
 ## 明确不做
 
 当前不建设：
@@ -94,6 +122,7 @@ Issue #2 中的简单拓扑和少量脏数据开关不是 #1 的前置条件。
 - [GenerationSpec 与数据模型](docs/scenario-model.md)
 - [生成与接口策略](docs/backend-strategy.md)
 - [前端设计](docs/frontend-design.md)
+- [前端开发工具约束](docs/qoder-frontend-tooling.md)
 - [安全与许可证](docs/security-and-licensing.md)
 - [开发与代码审查流程](docs/development-workflow.md)
 - [精简路线图](docs/roadmap.md)
