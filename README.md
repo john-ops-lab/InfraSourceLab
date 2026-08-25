@@ -1,70 +1,113 @@
 # InfraSourceLab
 
-> 用自然语言快速生成有关系的 CMDB 配置数据，并通过带认证的 REST API 提供给 DLR、CMDB 或其他测试程序。
+> 用自然语言描述需要的 CMDB 测试环境，生成数量可控、字段合理、关系一致的配置数据，并通过带认证的 REST API 提供给 DLR、CMDB 或测试程序。
 
-InfraSourceLab 是一个本地优先、单用户的 **AI CMDB 数据生成工具**。它不会启动 vCenter、Kubernetes、SNMP、Redfish、Kafka 等复杂模拟环境，也没有 Agent、调度、Timeline、Fault 或 Verifier 子系统。
+## 项目状态：设计阶段
 
-> 当前实现提交正在写入 `main`。完整代码位于 `backend/` 与 `web/`，开发完成后以 GitHub Actions 结果为准。
+> **当前仓库尚未开始产品代码开发。**
 
-## 核心流程
+截至当前 `main`：
+
+```text
+已有
+├─ LICENSE
+├─ README.md
+└─ docs/                 产品、架构、前端与调研设计文档
+
+尚无
+├─ backend/
+├─ web/
+├─ Dockerfile / docker-compose.yml
+├─ 自动化测试
+├─ GitHub Actions
+└─ 可运行版本或 Release
+```
+
+因此，本文和 `docs/` 中描述的功能均为**目标设计**，不是已经实现的能力。任何“#1/#2 已开发完成、测试通过、可以 Review”的历史表述均不代表 GitHub 当前事实。
+
+当前工作项：
+
+- [Issue #1](https://github.com/john-ops-lab/InfraSourceLab/issues/1)：**MVP 设计完成，尚未开始实现**；
+- [Issue #2](https://github.com/john-ops-lab/InfraSourceLab/issues/2)：**可选增强设计，必须等待 #1 真正实现并验证后再决定是否开发**；
+- Issues #3～#8：已关闭为 `not planned`，不属于当前开发范围。
+
+权威状态说明见 [`docs/status.md`](docs/status.md)。
+
+---
+
+## 计划解决的问题
+
+个人开发 DLR 或 CMDB 时，通常没有真实企业环境，也难以准备大量合理的服务器、虚拟机、网络设备、应用、数据库、Kubernetes 等配置项及关系数据。
+
+InfraSourceLab 计划提供最短闭环：
 
 ```text
 自然语言 / 内置模板
         ↓
-AI 生成并解释 GenerationSpec
+AI 生成小型 GenerationSpec
         ↓
-用户确认数量、seed 与数据质量规则
+用户确认数量、关系和 seed
         ↓
-Python 按 seed 确定性生成 CI 与关系
-        ↓
-SQLite 持久化
+本地确定性生成 CI 与关系
         ↓
 Bearer Token REST API
         ├─ DLR 采集
         ├─ CMDB 导入
-        ├─ JSON / CSV / XLSX 导出
-        └─ 有界简单拓扑
+        └─ JSON / CSV / 可选 XLSX 导出
 ```
 
-AI 只负责把自然语言转换成一个小型结构化规格，不逐条生成记录，也不会在数据接口被调用时再次请求模型。未配置 AI 时，三个内置模板仍可完成全部核心流程。
+AI 只负责把自然语言转换成结构化规格，不逐条生成上万条数据，也不在每次 API 请求时调用模型。
 
-## 一条命令运行
+---
 
-```bash
-cp .env.example .env
-# 至少修改 ISL_API_KEY
+## MVP 计划范围
 
-docker compose up --build
-```
+计划包含：
 
-打开：Web `http://127.0.0.1:8080`，OpenAPI `http://127.0.0.1:8080/docs`，Health `http://127.0.0.1:8080/health`。
+- 常用 CMDB CI 类型和关系；
+- 相同 `GenerationSpec + seed + generator version` 产生相同结果；
+- SQLite 本地持久化；
+- 一个环境变量配置的 Bearer Token；
+- 分页、筛选、搜索的 REST API；
+- JSON、CSV，以及低成本情况下的 XLSX 导出；
+- 简单的 Create、Datasets、Dataset Detail、API 使用界面；
+- OpenAI-compatible AI Provider，同时保留无 AI 模板入口；
+- 单应用、单 Docker 服务的本地运行方式。
 
-## API 认证
+Issue #2 中的简单拓扑和少量脏数据开关不是 #1 的前置条件。
 
-```bash
-export ISL_API_KEY=replace-with-a-strong-local-key
-curl -H "Authorization: Bearer $ISL_API_KEY" http://127.0.0.1:8080/api/v1/datasets
-```
+---
 
-## 核心 API
+## 明确不做
 
-```text
-GET    /api/v1/config
-GET    /api/v1/templates
-POST   /api/v1/specs/preview
-POST   /api/v1/datasets/generate
-GET    /api/v1/datasets
-GET    /api/v1/datasets/{id}
-DELETE /api/v1/datasets/{id}
-GET    /api/v1/datasets/{id}/cis
-GET    /api/v1/datasets/{id}/relations
-GET    /api/v1/datasets/{id}/summary
-GET    /api/v1/datasets/{id}/topology
-GET    /api/v1/datasets/{id}/export?format=json|csv|xlsx
-```
+当前不建设：
 
-DLR 对接见 [`docs/dlr-http-example.md`](docs/dlr-http-example.md)。
+- vCenter、SNMP、Kubernetes、Redfish 等协议模拟器；
+- PostgreSQL、Kafka、Redis、NetBox 等真实服务编排；
+- Lab Agent、Docker socket 管理、远程 Agent；
+- Timeline、Fault、Toxiproxy、Observation、Verifier；
+- 多租户、RBAC、SSO；
+- 图数据库或生产数字孪生；
+- 通用插件、Importer 或规则引擎平台。
+
+只有实际使用证明通用 REST/文件接口不足时，才针对一个具体缺口单独立项。
+
+---
+
+## 设计文档
+
+- [项目状态](docs/status.md)
+- [产品定义](docs/product.md)
+- [精简架构](docs/architecture.md)
+- [GenerationSpec 与数据模型](docs/scenario-model.md)
+- [生成与接口策略](docs/backend-strategy.md)
+- [前端设计](docs/frontend-design.md)
+- [安全与许可证](docs/security-and-licensing.md)
+- [开发与 Review 流程](docs/development-workflow.md)
+- [精简路线图](docs/roadmap.md)
+
+`docs/research/` 是早期工具调研，只用于未来选型参考，不是当前实现清单。
 
 ## License
 
-Apache License 2.0，见 [LICENSE](LICENSE)。
+InfraSourceLab 使用 [Apache License 2.0](LICENSE)。
