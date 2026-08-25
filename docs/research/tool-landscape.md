@@ -315,8 +315,8 @@ NetBox 社区提供演示数据，可参考：
 | 稳定 UUID 和摘要 | Python 标准库 `uuid`、`hashlib` |
 | IP 生成 | Python 标准库 `ipaddress` |
 | 前端 | React、TypeScript、Vite |
-| 组件 | shadcn/ui、Tailwind CSS |
-| AI 创建体验 | assistant-ui |
+| 组件与一次性 AI 规格界面 | shadcn/ui、Tailwind CSS |
+| 未来多轮 AI 交互 | assistant-ui，仅在真实需要时引入，不属于 Issue #1 |
 | 浏览器验证 | Chrome DevTools MCP、Playwright |
 | JSON、CSV | Python 标准库和成熟库 |
 | XLSX | 低成本时使用成熟 XLSX 库 |
@@ -338,7 +338,8 @@ Issue #1 不应接入：
 - NetBox；
 - Toxiproxy；
 - containerlab；
-- 数据库、消息队列和目录服务编排。
+- 数据库、消息队列和目录服务编排；
+- assistant-ui 或其他多轮聊天运行时。
 
 它们可能在未来有价值，但现在接入会明显扩大范围和维护成本。
 
@@ -368,4 +369,4 @@ Issue #1 不应接入：
 → 文件导出
 ```
 
-只有真实使用证明某个具体协议不可替代时，才从本文选择一个成熟工具单独接入。
+只有真实使用证明某个具体协议或多轮 AI 交互不可替代时，才从本文选择成熟工具单独接入。
