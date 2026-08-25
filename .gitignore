@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# 本地数据（SQLite 与导出文件）
+backend/data/
+
+# Node
+node_modules/
+dist/
+.npm-cache/
+playwright-report/
+test-results/
+playwright/.cache/
+.e2e-data-*/
+.verify-evidence/
+
+# 环境与密钥
+.env
+.env.*
+!.env.example
+
+# 系统与编辑器
+.DS_Store
+.idea/
+.vscode/

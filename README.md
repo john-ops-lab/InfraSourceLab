@@ -2,36 +2,60 @@
 
 > 用自然语言描述需要的 CMDB 测试环境，生成数量可控、字段合理、关系一致的配置数据，并通过带认证的 REST API 提供给 CMDB、数据导入程序或测试脚本。
 
-## 项目状态：设计阶段
+## 项目状态：MVP 已实现，等待审查
 
-> **当前仓库尚未开始产品代码开发。**
-
-截至当前 `main`：
+当前 `main` 已包含 Issue #1 的完整实现：
 
 ```text
-已有
 ├─ LICENSE
 ├─ README.md
-└─ docs/                 产品、架构、前端与调研设计文档
-
-尚无
-├─ backend/
-├─ web/
-├─ Dockerfile / docker-compose.yml
-├─ 自动化测试
-├─ GitHub Actions
-└─ 可运行版本或发布版本
+├─ docs/                 产品、架构、前端与调研设计文档 + 状态说明
+├─ backend/              FastAPI + SQLAlchemy + SQLite 数据生成引擎（51 个 pytest）
+├─ web/                  React 19 + Vite + Tailwind v4 + shadcn/ui 前端（Vitest + Playwright）
+├─ Dockerfile            单镜像：后端 + 内置前端静态产物
+└─ docker-compose.yml    只向 127.0.0.1:8080 发布
 ```
 
-因此，本文和 `docs/` 中描述的功能均为**目标设计**，不是已经实现的能力。任何“#1/#2 已开发完成、测试通过、可以进行代码审查”的历史表述均不代表 GitHub 当前事实。
+验收证据（测试命令、浏览器验证、容器验证）记录在 [`docs/status.md`](docs/status.md) 与 Issue #1 完成报告中。外部审查确认前不声称已验收。
 
 当前工作项：
 
-- [Issue #1](https://github.com/john-ops-lab/InfraSourceLab/issues/1)：**MVP 设计完成，尚未开始实现**；
-- [Issue #2](https://github.com/john-ops-lab/InfraSourceLab/issues/2)：**可选增强设计，仅包含简单拓扑、基础数据质量和 CMDB 使用示例，必须等待 #1 真正实现并验证后再决定是否开发**；
+- [Issue #1](https://github.com/john-ops-lab/InfraSourceLab/issues/1)：**MVP 已实现，等待审查**；
+- [Issue #2](https://github.com/john-ops-lab/InfraSourceLab/issues/2)：**可选增强设计，仅包含简单拓扑、基础数据质量和 CMDB 使用示例，必须等待 #1 审查通过并实际使用后再决定是否开发**；
 - Issues #3～#8：已关闭为“不计划实施”，不属于当前开发范围。
 
 权威状态说明见 [`docs/status.md`](docs/status.md)。
+
+## 快速开始
+
+### Docker（推荐）
+
+```bash
+cp .env.example .env        # 修改 ISL_API_KEY；可选填 OpenAI 兼容 AI 配置
+docker compose up -d --build
+curl http://127.0.0.1:8080/health
+```
+
+浏览器打开 `http://127.0.0.1:8080`，在设置页填入同一个 `ISL_API_KEY` 即可使用。
+
+### 本地开发
+
+```bash
+# 后端（端口 8080）
+cd backend && uv sync
+ISL_API_KEY=dev-key uv run python -m app.main
+
+# 前端（自动代理 /api 到 127.0.0.1:8080）
+cd web && npm install && npm run dev
+```
+
+### 测试
+
+```bash
+cd backend && uv run pytest        # 51 个用例
+cd web && npm test                 # Vitest 单测
+cd web && npx playwright test      # 端到端（自动拉起生产形态服务）
+```
 
 ## 计划解决的问题
 

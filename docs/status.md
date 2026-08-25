@@ -2,66 +2,59 @@
 
 ## 当前阶段
 
-**设计阶段，尚未开始产品代码开发。**
+**MVP 已实现，等待外部审查。**
 
-截至当前 `main` 分支，仓库只包含：
+当前 `main` 分支已包含：
 
 ```text
 LICENSE
 README.md
 docs/
+backend/              FastAPI + SQLAlchemy + SQLite + Faker 数据生成引擎与 51 个 pytest
+web/                  React 19 + TypeScript + Vite + Tailwind v4 + shadcn/ui 前端
+Dockerfile            单镜像：后端 + 内置前端静态产物
+docker-compose.yml    只向 127.0.0.1:8080 发布
 ```
 
-当前不存在：
-
-```text
-backend/
-web/
-Dockerfile
-docker-compose.yml
-自动化测试
-GitHub Actions
-可运行镜像
-发布版本
-```
-
-因此，仓库中的产品、架构、接口、前端、安全和路线图内容均表示**计划如何实现**，不表示相关功能已经存在。
-
-## 当前工作项
-
-### Issue #1：MVP 设计，待开发
-
-目标是完成最小可用闭环：
+Issue #1 的 MVP 闭环已可运行：
 
 ```text
 自然语言或模板
 → 经过校验的 GenerationSpec
 → 本地确定性生成 CI 与关系
-→ SQLite
+→ SQLite（PRAGMA user_version = 1）
 → Bearer Token REST API
-→ JSON / CSV 导出
-→ 简单可用界面
+→ JSON / CSV / XLSX 导出
+→ 创建、数据集列表、详情、设置界面
 ```
 
-已经固定的关键设计：
+## 实现证据
 
-- `POST /api/v1/specs/from-prompt` 只生成并校验规格建议；
+- 起始提交：`893a1e2`（实现开始前的 `main` 最新提交，已记录在 Issue #1）；
+- 结束提交：本次实现系列的最后一次提交，准确哈希记录在 Issue #1 完成报告中；
+- 后端测试：`cd backend && uv run pytest` → 51 passed；
+- 前端单测：`cd web && npm test`（Vitest）→ 7 passed；
+- 端到端：`cd web && npx playwright test`（Playwright + Chromium，uvicorn 生产形态）→ 4 passed；
+- 浏览器验收：真实浏览器完成设置密钥 → 模板 → 生成 → CI/关系/API 与导出全流程，截图保存在本地验证目录，关键结果记录在 Issue #1；
+- 容器验证：镜像构建后以 `docker run` 验证 /health、SPA 深链、401 认证、两步 API、search_text 查询、三种导出与 `user_version=1`。
+
+## 当前工作项
+
+### Issue #1：MVP，已实现，等待审查
+
+已经固定的关键设计（实现与之一致）：
+
+- `POST /api/v1/specs/from-prompt` 只生成并校验规格建议，不创建数据集；
 - `POST /api/v1/datasets` 只接收用户确认后的规格并创建数据集；
 - 关系使用 `strategy=balanced|random_seeded` 和 `coverage=from|to`；
-- CI 搜索使用受控 `search_text`；
-- Issue #1 创建页使用一次性提示词到规格建议，不建设多轮聊天；
-- SQLite 使用 `PRAGMA user_version = 1`，不兼容版本明确提示备份和重建，不在 MVP 建设自动迁移链。
+- CI 搜索使用受控 `search_text` 白名单（`%`、`_` 按字面量转义）；
+- 创建页使用一次性提示词到规格建议，不建设多轮聊天；
+- SQLite 使用 `PRAGMA user_version = 1`，不兼容版本明确提示备份和重建。
 
-当前状态：
+已知限制（详见 Issue #1 完成报告）：
 
-```text
-需求已整理
-架构已设计
-验收标准已定义
-代码尚未开始
-测试尚未建立
-尚无可供审查的实现提交
-```
+- 验证环境中无 AI 密钥，`from-prompt` 只验证了 503/校验路径与假 Provider 单测；
+- 本机 8080 被占用期间，容器验证改用 8091 发布端口，Compose 文件仍为 `127.0.0.1:8080:8080`。
 
 ### Issue #2：可选增强设计，暂不开发
 
@@ -95,7 +88,7 @@ Issue #2 **不包含**数据库模式迁移、自动升级、多轮 AI 聊天或
 5. 浏览器主流程有真实验证证据；
 6. Issue 中记录了准确的起始提交、结束提交、已知限制和验证结果。
 
-没有这些证据时，不得声称功能已开发、测试通过或可以进行代码审查。
+当前阶段声称“待审查”依据的就是上述六项证据；在外部审查确认前，不声称“已验收”。
 
 ## 当前权威顺序
 

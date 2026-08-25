@@ -1,0 +1,18 @@
+# 只向宿主机回环地址发布端口；数据保存在命名卷中。
+services:
+  infrasourcelab:
+    build: .
+    image: infrasourcelab:latest
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      ISL_API_KEY: ${ISL_API_KEY:?请在 .env 中设置 ISL_API_KEY}
+      ISL_AI_BASE_URL: ${ISL_AI_BASE_URL:-}
+      ISL_AI_API_KEY: ${ISL_AI_API_KEY:-}
+      ISL_AI_MODEL: ${ISL_AI_MODEL:-}
+    volumes:
+      - isl-data:/data
+    restart: unless-stopped
+
+volumes:
+  isl-data:
