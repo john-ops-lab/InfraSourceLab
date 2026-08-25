@@ -26,6 +26,7 @@ CSV
 → CI 类型
 → 数量
 → 关系
+→ 关系覆盖方向
 → 简单字段偏好
 → GenerationSpec
 ```
@@ -43,8 +44,9 @@ CSV
 - 生成稳定 ID；
 - 生成合理字段；
 - 分配 IP、序列号和 UUID；
-- 建立关系；
-- 校验引用完整性；
+- 按覆盖方向建立关系；
+- 校验引用完整性并去重；
+- 构建受控 `search_text`；
 - 批量持久化；
 - 导出文件。
 
@@ -97,28 +99,44 @@ uuid5 / hashlib    → 可重复 UUID 和摘要
 
 ```text
 2 个数据中心包含 30 个机柜
-200 台物理服务器安装在机柜中
-800 台虚拟机运行在物理服务器上
-80 个应用部署在虚拟机上
-15 个数据库被应用使用
+coverage=to：确保每个机柜都有一个数据中心
+
+800 台虚拟机运行在 200 台物理服务器上
+coverage=from：确保每台虚拟机都有一台宿主机
 ```
 
-内部策略可以保持简单：
+MVP 只保留两个策略和一个覆盖方向：
 
 ```text
-balanced       尽量平均分配
-round_robin    按顺序轮转
-random_seeded  基于 seed 的可重复随机连接
-one_to_many    一对多连接
+strategy=balanced       尽量平均分配被选择的一侧
+strategy=random_seeded  基于 seed 可重复地选择连接对象
+coverage=from           每个起点 CI 生成一条关系
+coverage=to             每个终点 CI 生成一条关系
 ```
 
-生成后必须检查：
+不再使用含义重叠或基数不清晰的 `round_robin`、`one_to_many`。MVP 不建设通用基数模型或图规则语言。
 
-- 起点和终点都存在；
-- 关系类型合法；
-- 没有意外悬空；
-- 不存在重复边（相同 `(类型, 起点, 终点)` 只保留一条）；
+生成前和生成后必须检查：
+
+- 起点和终点类型存在且数量大于零；
+- `coverage` 合法；
+- 相同规范化 RelationSpec 不重复；
+- 起点和终点 ID 都存在；
+- 默认不产生自环；
+- 不存在重复边；
 - 数量摘要正确。
+
+重复处理规则：
+
+```text
+相同 RelationSpec 重复出现
+→ 规格校验失败，要求用户或 AI 修正规格
+
+不同规则偶然生成同一条边
+→ 生成阶段去重
+→ 在数据集响应 warnings 中说明
+→ 数据库唯一约束最终保护
+```
 
 ## 6. 数据规模
 
@@ -139,16 +157,46 @@ MVP 目标：
 
 不为十万或百万级数据提前引入 Worker、队列、分布式存储或图数据库。
 
-## 7. REST API 设计
+## 7. 固定 REST API
 
-稳定资源：
+### 模板和规格
 
 ```text
-datasets
-cis
-relations
-summary
-export
+GET  /api/v1/templates
+POST /api/v1/specs/from-prompt
+```
+
+`POST /api/v1/specs/from-prompt` 只返回经过服务端重新校验和规范化的规格建议：
+
+```json
+{
+  "message": "我计划生成以下数据……",
+  "spec": {},
+  "warnings": []
+}
+```
+
+它不写入数据集。
+
+### 创建数据集
+
+```text
+POST /api/v1/datasets
+```
+
+只接受用户最终确认的 `GenerationSpec`。AI 规格和内置模板走同一创建接口，不提供 prompt/spec 混合请求。
+
+### 查询资源
+
+```text
+GET    /api/v1/datasets
+GET    /api/v1/datasets/{id}
+DELETE /api/v1/datasets/{id}
+GET    /api/v1/datasets/{id}/summary
+GET    /api/v1/datasets/{id}/cis
+GET    /api/v1/datasets/{id}/cis/{ci_id}
+GET    /api/v1/datasets/{id}/relations
+GET    /api/v1/datasets/{id}/export?format=json|csv|xlsx
 ```
 
 建议分页响应：
@@ -162,7 +210,9 @@ export
 }
 ```
 
-CI 查询计划支持：
+## 8. CI 搜索
+
+CI 查询支持：
 
 ```text
 type
@@ -171,20 +221,37 @@ page
 page_size
 ```
 
-`q` 首版只匹配 ID、名称和有限常用属性，不建设通用 JSON 查询语言。
+`q` 只对受控 `search_text` 做不区分大小写的包含搜索。
 
-实现方式：
+写入 CI 时，将以下存在的字段规范化为小写文本后聚合：
 
 ```text
-ci_id、name       普通列匹配，可配合 (dataset_id, name) 索引
-hostname、ip_address、management_ip、
-serial_number、code
-                  有限的属性白名单，对 attributes_json 做 LIKE
+ci_id
+name
+hostname
+ip_address
+management_ip
+serial_number
+code
 ```
 
-不引入 SQLite FTS5、json_each 全量扫描或通用 JSON 查询；若万级规模下实测过慢，再单独优化。
+例如：
 
-关系查询计划支持：
+```text
+vm-0001 vm-prod-001 vm-prod-001.example.internal 10.10.1.20
+```
+
+实现要求：
+
+- 不直接对整个 `attributes_json` 做 `LIKE`；
+- 不使用 `json_each` 做通用扫描；
+- 不引入 SQLite FTS5；
+- 对用户输入中的 `%`、`_` 和转义字符进行转义，按普通文字搜索；
+- `(dataset_id, type)` 和 `(dataset_id, name)` 保持普通索引；
+- 不宣称普通 B-Tree 能优化前置 `%` 的包含查询；
+- 若万级规模实测仍慢，再单独优化。
+
+关系查询支持：
 
 ```text
 type
@@ -194,19 +261,13 @@ page
 page_size
 ```
 
-FastAPI 自动生成 OpenAPI。产品界面计划提供：
+FastAPI 自动生成 OpenAPI。产品界面提供基础地址、Bearer 请求头示例、当前数据集 ID、可复制的 curl，以及常用分页和筛选示例。
 
-- 基础地址；
-- Bearer 请求头示例；
-- 当前数据集 ID；
-- 可复制的 curl；
-- 常用分页和筛选示例。
+## 9. 认证策略
 
-## 8. 认证策略
+认证设计以 [`architecture.md`](architecture.md) 第 7 节为唯一权威：单一环境变量 `ISL_API_KEY`、Bearer Token、安全字符串比较、错误返回 401、日志不打印 Key。首版不建设用户系统、多 Key 或 OAuth，足以覆盖本地或可信内网开发场景。
 
-认证设计以 [`architecture.md`](architecture.md) 第 7 节为唯一权威：单一环境变量 `ISL_API_KEY`、Bearer Token、安全字符串比较、错误返回 401、日志不打印 Key。本文不重复具体条目；首版不建设用户系统、多 Key 或 OAuth，足以覆盖本地或可信内网开发场景。
-
-## 9. 导出策略
+## 10. 导出策略
 
 ### JSON
 
@@ -242,9 +303,9 @@ CI_<type>
 
 使用成熟库，不自行实现文件格式。XLSX 是低优先级，不能阻塞认证 API、JSON 和 CSV。
 
-## 10. 模板与无 AI 入口
+## 11. 模板与无 AI 入口
 
-AI 未配置时计划提供少量模板：
+AI 未配置时提供少量模板：
 
 ```text
 小型数据中心
@@ -253,7 +314,7 @@ AI 未配置时计划提供少量模板：
 Kubernetes 基础环境
 ```
 
-模板本质上也是 `GenerationSpec`。
+模板本质上也是 `GenerationSpec`，由用户确认后提交到 `POST /api/v1/datasets`。
 
 这样可以保证：
 
@@ -261,7 +322,16 @@ Kubernetes 基础环境
 - 自动化测试不依赖付费 API；
 - 用户能快速理解规格结构。
 
-## 11. 什么时候才增加新数据源形态
+## 12. 耗时、事务和数据库版本
+
+- AI 规格接口由 `ISL_AI_TIMEOUT_SECONDS` 限时；
+- 数据集创建是纯本地计算，不调用外部服务；
+- 万级规模目标数秒内完成，首版不增加生成超时参数、队列或 Worker；
+- 生成、完整性检查和持久化必须具有清晰事务边界，失败不留下伪成功数据集；
+- SQLite 使用 `PRAGMA user_version = 1`；空库自动初始化，未知非零版本明确拒绝启动并提示备份、删除后重建；
+- 自动迁移不属于 Issue #2，只有真实版本升级需要保留旧数据时才单独立项。
+
+## 13. 什么时候才增加新数据源形态
 
 MVP 真正实现并通过 CMDB、数据导入程序或测试脚本实际使用后，再逐项回答：
 
@@ -273,15 +343,8 @@ MVP 真正实现并通过 CMDB、数据导入程序或测试脚本实际使用�
 
 只有答案支持时，才新建一个范围明确的 Issue。
 
-## 12. 历史调研的定位
+## 14. 历史调研与停止规则
 
-`docs/research/` 中对 Microcks、vcsim、KWOK、snmpsim 等项目的调研只用于未来选型：
+`docs/research/` 只用于未来选型，不属于 Issue #1 验收条件。开发者不得因为看见调研就顺手接入协议模拟器或真实服务。
 
-- 不属于当前待开发范围；
-- 不作为 Issue #1 的验收条件；
-- 开发者不得因为看见调研就顺手接入；
-- 只有出现具体需求时才重新核对最新版本、维护状态和许可证。
-
-## 13. 停止规则
-
-扩展停止条件和路线原则以 [`roadmap.md`](roadmap.md) 为唯一权威：Issue #1 完成“自然语言或模板 → 规格 → 数据集 → Bearer Token API → 导出”闭环后停止扩展，进入 CMDB 实际使用和外部审查，不得在同一开发波次中追加新功能。
+扩展停止条件以 [`roadmap.md`](roadmap.md) 为唯一权威：Issue #1 完成“自然语言或模板 → 规格 → 数据集 → Bearer Token API → 导出”闭环后停止扩展，进入 CMDB 实际使用和外部审查。
