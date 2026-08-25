@@ -24,7 +24,7 @@ GenerationSpec
 CI 记录 + CI 关系
 ```
 
-普通用户主要通过 AI 或简单表单创建规格，不需要手写 JSON 或 YAML。
+普通用户主要通过一次性 AI 规格建议或简单表单创建规格，不需要手写 JSON 或 YAML。
 
 ## 2. 最小结构
 
@@ -47,19 +47,22 @@ CI 记录 + CI 关系
       "type": "contains",
       "from_type": "data_center",
       "to_type": "rack",
-      "strategy": "balanced"
+      "strategy": "balanced",
+      "coverage": "to"
     },
     {
       "type": "mounted_in",
       "from_type": "physical_server",
       "to_type": "rack",
-      "strategy": "balanced"
+      "strategy": "balanced",
+      "coverage": "from"
     },
     {
       "type": "runs_on",
       "from_type": "virtual_machine",
       "to_type": "physical_server",
-      "strategy": "balanced"
+      "strategy": "balanced",
+      "coverage": "from"
     }
   ]
 }
@@ -255,9 +258,20 @@ uuid
   "type": "runs_on",
   "from_type": "virtual_machine",
   "to_type": "physical_server",
-  "strategy": "balanced"
+  "strategy": "balanced",
+  "coverage": "from"
 }
 ```
+
+字段含义：
+
+| 字段 | 必填 | 说明 |
+|---|---:|---|
+| `type` | 是 | 关系类型 |
+| `from_type` | 是 | 起点 CI 类型 |
+| `to_type` | 是 | 终点 CI 类型 |
+| `strategy` | 是 | 连接对象的选择策略 |
+| `coverage` | 是 | 必须被完整覆盖的一侧 |
 
 ### 核心关系类型
 
@@ -272,25 +286,70 @@ uses
 has_ip
 ```
 
-### 简单策略
+### 策略
+
+MVP 只保留：
 
 ```text
-balanced          尽量平均分配
-round_robin       按顺序轮转
-random_seeded     基于 seed 的可重复随机连接
-one_to_many       一对多连接
+balanced       尽量平均分配被选择的一侧
+random_seeded  基于 seed 的可重复随机连接
 ```
 
-不建设通用图规则语言。
+不再使用 `round_robin`、`one_to_many`，因为它们与覆盖方向存在语义重叠，容易造成关系数量歧义。
+
+### 覆盖方向
+
+```text
+coverage=from
+每个 from_type CI 必须生成一条出边
+
+coverage=to
+每个 to_type CI 必须生成一条入边
+```
+
+示例：
+
+```text
+data_center contains rack
+coverage=to
+→ 每个 rack 都属于一个 data_center
+
+virtual_machine runs_on physical_server
+coverage=from
+→ 每个 virtual_machine 都运行在一台 physical_server 上
+```
+
+MVP 不表达“每个对象必须连接 2～5 个目标”等复杂基数。未来真实需求出现后再单独扩展。
 
 ### 关系校验
 
 - 起点和终点类型必须存在；
-- 目标数量为零时拒绝不可能关系；
+- 被连接的两侧数量必须大于零；
+- `strategy` 只能是 `balanced` 或 `random_seeded`；
+- `coverage` 只能是 `from` 或 `to`；
+- 相同规范化 RelationSpec 不允许重复出现；
 - `from_id` 和 `to_id` 必须引用当前数据集记录；
 - 关系 ID 必须稳定；
 - 默认不生成自环；
-- 不允许重复边：同一数据集中相同的 `(type, from_ci_id, to_ci_id)` 只保留一条。生成器在连接阶段去重，数据库对 `(dataset_id, type, from_ci_id, to_ci_id)` 加唯一约束。
+- 同一数据集中相同的 `(type, from_ci_id, to_ci_id)` 只保留一条。
+
+重复行为：
+
+```text
+相同 RelationSpec 重复
+→ 规格校验失败
+
+不同规则偶然生成相同边
+→ 生成器去重
+→ 数据集 warnings 说明
+→ 数据库唯一约束最终保护
+```
+
+数据库唯一约束：
+
+```text
+(dataset_id, type, from_ci_id, to_ci_id)
+```
 
 ## 8. 确定性
 
@@ -342,7 +401,8 @@ relation-000001
 → Pydantic 或 JSON Schema 校验
 → 数量上限校验
 → 类型校验
-→ 关系校验
+→ 关系策略和覆盖方向校验
+→ 重复 RelationSpec 校验
 → 规格规范化
 ```
 
@@ -369,6 +429,8 @@ relation-000001
   }
 }
 ```
+
+数据库内部可以额外保存 `search_text`，但 API 和导出不必暴露该辅助字段。
 
 ### CI 关系
 
@@ -407,6 +469,7 @@ Issue #1 不得因为这些能力延迟交付。
 - 观察与验证；
 - 任意脚本；
 - 运行时容器和接口；
-- 多租户归属。
+- 多租户归属；
+- 复杂关系基数语言。
 
 `GenerationSpec` 只是“生成一份数据集”的小合同，不是基础设施描述语言。
