@@ -40,6 +40,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { CodeCopy } from "@/components/CodeCopy"
 import { Pagination } from "@/components/Pagination"
+import { TopologyView } from "@/components/TopologyView"
 import { api, ApiError, type DatasetDetail } from "@/lib/api"
 import {
   ciTypeLabel,
@@ -208,6 +209,7 @@ export default function DatasetDetailPage() {
           <TabsTrigger value="overview">概览</TabsTrigger>
           <TabsTrigger value="cis">CI 数据</TabsTrigger>
           <TabsTrigger value="relations">关系</TabsTrigger>
+          <TabsTrigger value="topology">拓扑</TabsTrigger>
           <TabsTrigger value="export">API 与导出</TabsTrigger>
         </TabsList>
 
@@ -455,6 +457,14 @@ export default function DatasetDetailPage() {
             pageSize={relations?.page_size ?? PAGE_SIZE}
             total={relations?.total ?? 0}
             onChange={setRelationPage}
+          />
+        </TabsContent>
+
+        <TabsContent value="topology" className="space-y-4 pt-4">
+          <TopologyView
+            datasetId={datasetId}
+            ciTypes={detail.spec.ci_types}
+            relationTypes={[...new Set(relationTypes)]}
           />
         </TabsContent>
 

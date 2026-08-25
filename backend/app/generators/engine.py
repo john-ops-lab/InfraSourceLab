@@ -10,7 +10,7 @@ from ..specs.models import GenerationSpec
 from .ci_types import GENERATORS, GeneratorContext
 from .relations import generate_relations
 
-GENERATOR_VERSION = "1.0.0"
+GENERATOR_VERSION = "1.1.0"
 
 # 稳定 ID 前缀
 ID_PREFIXES = {
@@ -99,6 +99,14 @@ def generate_dataset(spec: GenerationSpec) -> GenerationResult:
 
     relation_result = generate_relations(spec, cis_by_type)
     warnings.extend(relation_result.warnings)
+
+    # 数据质量缺陷注入（Issue #2）：在关系生成后执行，重复记录不继承关系。
+    # 缺陷直接改写记录本身，因此 CI 列表、API 与导出中的脏数据天然一致。
+    if spec.quality_defects:
+        from .quality import apply_quality_defects
+
+        cis, defect_warnings = apply_quality_defects(spec, cis)
+        warnings.extend(defect_warnings)
 
     # 发布前校验：关系引用完整性
     all_ids = {ci.id for ci in cis}

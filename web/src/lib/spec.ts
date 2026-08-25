@@ -17,12 +17,24 @@ export interface RelationEntry {
   coverage: RelationCoverage
 }
 
+// 四种确定性数据质量缺陷（Issue #2）
+export type DefectKind = "missing_field" | "case_drift" | "duplicate_record" | "wrong_value"
+
+export interface QualityDefectEntry {
+  kind: DefectKind
+  ci_type: string
+  field?: string
+  ratio?: number
+  count?: number
+}
+
 export interface GenerationSpec {
   name: string
   description: string
   seed: number
   ci_types: CITypeEntry[]
   relations: RelationEntry[]
+  quality_defects?: QualityDefectEntry[]
   metadata?: Record<string, string>
 }
 
@@ -107,6 +119,13 @@ export const RELATION_TYPE_LABELS: Record<string, string> = {
   depends_on: "依赖（depends_on）",
   uses: "使用（uses）",
   has_ip: "拥有 IP（has_ip）",
+}
+
+export const DEFECT_KIND_LABELS: Record<DefectKind, string> = {
+  missing_field: "缺失字段",
+  case_drift: "大小写漂移",
+  duplicate_record: "重复记录",
+  wrong_value: "错误值",
 }
 
 export function ciTypeLabel(type: string): string {

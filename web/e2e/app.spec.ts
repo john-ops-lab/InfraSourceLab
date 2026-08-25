@@ -103,3 +103,55 @@ test("API Key 会话不能修改 AI 配置（403）", async ({ page }) => {
   await page.goto("/settings/ai")
   await expect(page.getByText(/请先使用管理员账号|当前会话无权访问/)).toBeVisible()
 })
+
+test("拓扑路径：查看节点 → 点击详情 → 聚焦邻居", async ({ page }) => {
+  await login(page)
+  await page.goto("/create")
+  await page
+    .locator("div", { hasText: "小型数据中心" })
+    .getByRole("button", { name: "使用此模板" })
+    .first()
+    .click()
+  await page.getByRole("button", { name: "生成数据集", exact: true }).click()
+  await expect(page).toHaveURL(/\/datasets\/\d+/)
+
+  // 拓扑页签：节点渲染可见（有界抽样）
+  await page.getByRole("tab", { name: "拓扑" }).click()
+  const firstNode = page.locator(".react-flow__node").first()
+  await expect(firstNode).toBeVisible()
+
+  // 点击节点：侧边抽屉展示 CI 详情
+  await firstNode.click()
+  await expect(page.getByRole("button", { name: "聚焦邻居" })).toBeVisible()
+
+  // 聚焦邻居：以该节点为中心重新拉取
+  await page.getByRole("button", { name: "聚焦邻居" }).click()
+  await expect(page.getByText(/正在聚焦节点/)).toBeVisible()
+  await expect(page.locator(".react-flow__node").first()).toBeVisible()
+
+  // 返回全量视图
+  await page.getByRole("button", { name: "返回全量视图" }).click()
+  await expect(page.getByText(/正在聚焦节点/)).not.toBeVisible()
+})
+
+test("脏数据路径：启用缺陷规则后生成并看到注入提醒", async ({ page }) => {
+  await login(page)
+  await page.goto("/create")
+  await page
+    .locator("div", { hasText: "小型数据中心" })
+    .getByRole("button", { name: "使用此模板" })
+    .first()
+    .click()
+  await expect(page.getByText("确认生成规格")).toBeVisible()
+
+  // 添加一条默认的缺失字段缺陷规则（按数量 1）
+  await page.getByRole("button", { name: "添加缺陷规则" }).click()
+  await expect(page.getByText("未启用数据质量缺陷，生成干净数据。")).not.toBeVisible()
+
+  await page.getByRole("button", { name: "生成数据集", exact: true }).click()
+  await expect(page).toHaveURL(/\/datasets\/\d+/)
+
+  // 概览页签展示生成提醒：缺失字段注入警告
+  await expect(page.getByText("生成提醒")).toBeVisible()
+  await expect(page.getByText(/已注入 1 条缺失字段/)).toBeVisible()
+})

@@ -8,6 +8,14 @@ MAX_TOTAL_CI = 30_000
 MAX_CI_TYPE_ENTRIES = 12
 # 单个规格中关系规则上限
 MAX_RELATION_ENTRIES = 32
+# 单个规格中数据质量缺陷规则上限（四种缺陷各一条也富余）
+MAX_QUALITY_ENTRIES = 8
+# 缺陷字段名长度上限
+MAX_QUALITY_FIELD_LENGTH = 60
+
+# 拓扑视图：默认可见节点上限，避免渲染数千节点（Issue #2）
+DEFAULT_TOPOLOGY_NODES = 200
+MAX_TOPOLOGY_NODES = 200
 
 # 文本上限
 MAX_NAME_LENGTH = 120

@@ -154,6 +154,27 @@ export interface AIConfigInfo {
   ai_configured: boolean
 }
 
+export interface TopologyNode {
+  id: string
+  type: string
+  name: string
+}
+
+export interface TopologyEdge {
+  id: string
+  type: string
+  from_id: string
+  to_id: string
+}
+
+export interface TopologyData {
+  nodes: TopologyNode[]
+  edges: TopologyEdge[]
+  truncated: boolean
+  total_nodes: number
+  node_limit: number
+}
+
 export const api = {
   status: () => request<{ ai_configured: boolean }>("/api/v1/status"),
 
@@ -246,6 +267,19 @@ export const api = {
     search.set("page", String(params.page ?? 1))
     search.set("page_size", String(params.page_size ?? 20))
     return request<Paged<RelationRecord>>(`/api/v1/datasets/${id}/relations?${search.toString()}`)
+  },
+
+  // 简单拓扑：有界返回，支持类型/文字筛选与聚焦邻居（center）
+  topology: (
+    id: number,
+    params: { ci_type?: string; relation_type?: string; q?: string; center?: string },
+  ) => {
+    const search = new URLSearchParams()
+    if (params.ci_type) search.set("ci_type", params.ci_type)
+    if (params.relation_type) search.set("relation_type", params.relation_type)
+    if (params.q) search.set("q", params.q)
+    if (params.center) search.set("center", params.center)
+    return request<TopologyData>(`/api/v1/datasets/${id}/topology?${search.toString()}`)
   },
 
   // 导出需要携带 Authorization 请求头，因此走 fetch + Blob 下载

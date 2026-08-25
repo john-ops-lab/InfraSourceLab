@@ -14,12 +14,14 @@ from sqlalchemy.orm import Session
 
 from ..auth.token import require_auth
 from ..datasets import service
-from ..db.models import CIRecord, Dataset
+from ..db.models import CIRelation, CIRecord, Dataset
 from ..limits import (
     DEFAULT_PAGE_SIZE,
+    DEFAULT_TOPOLOGY_NODES,
     MAX_PAGE_SIZE,
     MAX_PROMPT_LENGTH,
     MAX_QUERY_LENGTH,
+    MAX_TOPOLOGY_NODES,
 )
 from ..specs.models import SpecValidationError, parse_and_validate
 from .deps import get_session
@@ -200,6 +202,93 @@ def list_relations(
         "page": result["page"],
         "page_size": result["page_size"],
         "total": result["total"],
+    }
+
+
+@router.get("/{dataset_id}/topology")
+def get_topology(
+    dataset_id: int,
+    ci_type: str | None = Query(default=None, max_length=40),
+    relation_type: str | None = Query(default=None, max_length=40),
+    q: str | None = Query(default=None, max_length=MAX_QUERY_LENGTH),
+    center: str | None = Query(default=None, max_length=80),
+    limit: int = Query(default=DEFAULT_TOPOLOGY_NODES, ge=1, le=MAX_TOPOLOGY_NODES),
+    session: Session = Depends(get_session),
+) -> dict:
+    """简单拓扑：节点来自 ci_records、边来自 ci_relations（Issue #2）。
+
+    有界返回：默认最多 200 个节点，超出时按 ci_id 稳定顺序截取并标记 truncated；
+    传 center 时返回该节点及其邻居（聚焦邻居）。
+    """
+    _get_dataset_or_404(session, dataset_id)
+
+    keyword = q.strip().lower() if q else ""
+
+    def matches(ci_id: str, name: str) -> bool:
+        return not keyword or keyword in ci_id.lower() or keyword in name.lower()
+
+    rows = session.execute(
+        select(CIRecord.ci_id, CIRecord.type, CIRecord.name)
+        .where(CIRecord.dataset_id == dataset_id)
+        .order_by(CIRecord.ci_id)
+    ).all()
+    by_id = {row[0]: (row[1], row[2]) for row in rows}
+
+    if center is not None:
+        if center not in by_id:
+            raise HTTPException(status_code=404, detail=f"CI 不存在：{center}")
+        neighbor_ids: set[str] = set()
+        rel_rows = session.execute(
+            select(CIRelation.relation_id, CIRelation.type, CIRelation.from_ci_id, CIRelation.to_ci_id)
+            .where(
+                CIRelation.dataset_id == dataset_id,
+                (CIRelation.from_ci_id == center) | (CIRelation.to_ci_id == center),
+            )
+            .order_by(CIRelation.relation_id)
+        ).all()
+        for row in rel_rows:
+            neighbor_ids.add(row[2])
+            neighbor_ids.add(row[3])
+        neighbor_ids.discard(center)
+        node_ids = [center] + sorted(neighbor_ids)[: limit - 1]
+        truncated = len(neighbor_ids) + 1 > limit
+        total_nodes = len(neighbor_ids) + 1
+    else:
+        filtered = [
+            row[0]
+            for row in rows
+            if (ci_type is None or row[1] == ci_type) and matches(row[0], row[2])
+        ]
+        total_nodes = len(filtered)
+        truncated = total_nodes > limit
+        node_ids = filtered[:limit]
+
+    node_set = set(node_ids)
+    nodes = [
+        {"id": ci_id, "type": by_id[ci_id][0], "name": by_id[ci_id][1]}
+        for ci_id in node_ids
+        if ci_id in by_id
+    ]
+
+    rel_rows = session.execute(
+        select(CIRelation.relation_id, CIRelation.type, CIRelation.from_ci_id, CIRelation.to_ci_id)
+        .where(CIRelation.dataset_id == dataset_id)
+        .order_by(CIRelation.relation_id)
+    ).all()
+    edges = [
+        {"id": row[0], "type": row[1], "from_id": row[2], "to_id": row[3]}
+        for row in rel_rows
+        if (relation_type is None or row[1] == relation_type)
+        and row[2] in node_set
+        and row[3] in node_set
+    ]
+
+    return {
+        "nodes": nodes,
+        "edges": edges,
+        "truncated": truncated,
+        "total_nodes": total_nodes,
+        "node_limit": limit,
     }
 
 

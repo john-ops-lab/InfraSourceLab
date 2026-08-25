@@ -18,6 +18,8 @@ from ..limits import (
     MAX_DESCRIPTION_LENGTH,
     MAX_NAME_LENGTH,
     MAX_OVERRIDE_PREFIX_LENGTH,
+    MAX_QUALITY_ENTRIES,
+    MAX_QUALITY_FIELD_LENGTH,
     MAX_RELATION_ENTRIES,
     MAX_TOTAL_CI,
 )
@@ -52,6 +54,9 @@ BUILTIN_RELATION_TYPES = [
 
 RelationStrategy = Literal["balanced", "random_seeded"]
 RelationCoverage = Literal["from", "to"]
+
+# 四种确定性数据质量缺陷（Issue #2）：不建通用规则引擎
+DefectKind = Literal["missing_field", "case_drift", "duplicate_record", "wrong_value"]
 
 
 class SpecValidationError(Exception):
@@ -100,12 +105,31 @@ class RelationSpec(BaseModel):
         return value
 
 
+class QualityDefectSpec(BaseModel):
+    """一条确定性缺陷规则：目标类型 + 可选字段 + 比例或数量二选一。"""
+
+    kind: DefectKind
+    ci_type: str
+    field: str | None = Field(default=None, max_length=MAX_QUALITY_FIELD_LENGTH)
+    ratio: float | None = Field(default=None, gt=0, le=1)
+    count: int | None = Field(default=None, ge=1, le=MAX_COUNT_PER_TYPE)
+
+    @model_validator(mode="after")
+    def _exactly_one_amount(self) -> "QualityDefectSpec":
+        if (self.ratio is None) == (self.count is None):
+            raise ValueError("缺陷规则必须在 ratio（0~1）与 count（正整数）中二选一")
+        return self
+
+
 class GenerationSpec(BaseModel):
     name: str = Field(min_length=1, max_length=MAX_NAME_LENGTH)
     description: str = Field(default="", max_length=MAX_DESCRIPTION_LENGTH)
     seed: int = Field(ge=0, le=2**31 - 1)
     ci_types: list[CITypeSpec] = Field(min_length=1, max_length=MAX_CI_TYPE_ENTRIES)
     relations: list[RelationSpec] = Field(default_factory=list, max_length=MAX_RELATION_ENTRIES)
+    quality_defects: list[QualityDefectSpec] = Field(
+        default_factory=list, max_length=MAX_QUALITY_ENTRIES
+    )
     metadata: dict[str, str] = Field(default_factory=dict, max_length=8)
 
     @model_validator(mode="after")
@@ -147,6 +171,19 @@ class GenerationSpec(BaseModel):
                 )
             seen.add(key)
 
+        seen_defects: set[tuple] = set()
+        for defect in self.quality_defects:
+            label = f"缺陷规则 {defect.kind}（{defect.ci_type}）"
+            if defect.ci_type not in counts:
+                errors.append(f"缺陷目标类型不存在：{label}")
+                continue
+            if counts[defect.ci_type] == 0:
+                errors.append(f"缺陷目标类型数量必须大于 0：{label}")
+            key = (defect.kind, defect.ci_type, defect.field)
+            if key in seen_defects:
+                errors.append(f"重复的缺陷规则：{label}")
+            seen_defects.add(key)
+
         if errors:
             raise SpecValidationError(errors)
         return self
@@ -167,6 +204,7 @@ def normalize_spec(spec: GenerationSpec) -> GenerationSpec:
         seed=spec.seed,
         ci_types=kept_types,
         relations=kept_relations,
+        quality_defects=[d for d in spec.quality_defects if d.ci_type in kept_type_names],
         metadata=spec.metadata,
     )
 
