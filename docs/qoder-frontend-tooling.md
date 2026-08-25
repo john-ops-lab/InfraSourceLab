@@ -1,149 +1,141 @@
 # Qoder 前端工具使用约束
 
+> **状态：设计阶段，尚未开始前端实现。**
+>
+> 本文用于约束未来的 Qoder 开发过程，不表示这些工具已经安装、集成或完成验证。
+
 ## 1. 目的
 
 这些工具用于帮助 Qoder 快速做出一个可用、清晰的简单界面，不是为了建立复杂设计流程。
 
 ```text
-UI Skills             → 先确认页面主任务和层级
+UI Skills             → 先确认页面主任务和信息层级
 shadcn/ui              → 复用基础组件
-assistant-ui           → Create 页自然语言输入
-Chrome DevTools MCP    → 真浏览器检查
+assistant-ui           → 创建页自然语言输入
+Chrome DevTools MCP    → 在真实浏览器中检查
 Playwright             → 固化核心路径
 ```
-
----
 
 ## 2. 唯一产品主流程
 
 ```text
-API key
-→ prompt / template
-→ review GenerationSpec summary
-→ adjust counts/seed
-→ generate dataset
-→ browse CI/relations
-→ copy API / export
+录入 API Key
+→ 输入提示词或选择模板
+→ 查看 GenerationSpec 摘要
+→ 调整数量和 seed
+→ 生成数据集
+→ 浏览 CI 和关系
+→ 复制 API 或导出
 ```
 
 所有前端设计都围绕这条链路。
 
 不要设计：
 
-- Runs/Sources/Agents dashboard；
-- Timeline/Fault/Verifier；
-- Monaco/YAML editor；
-- fake future navigation；
+- 运行、来源或代理仪表盘；
+- 时间线、故障或验证中心；
+- Monaco 或 YAML 编辑器；
+- 未来功能的假导航；
 - 多会话 AI 产品；
 - 拖拽式建模平台。
 
----
-
-## 3. UI Skills
+## 3. UI Skills 使用要求
 
 新页面实现前，只需要回答：
 
 1. 用户在这里要完成哪一个主任务？
 2. 主操作是否一眼可见？
-3. 是否有不必要的 Card、图表或高级配置？
-4. 空/错/慢状态如何显示？
-5. 1024 宽度是否还能完成操作？
+3. 是否存在不必要的卡片、图表或高级配置？
+4. 空状态、错误状态和慢响应如何显示？
+5. 1024 像素宽度是否还能完成操作？
 
-把关键决定记录在 #1 completion comment 即可，不需要长篇设计报告。
+关键决定记录在 Issue #1 的完成报告中即可，不需要长篇设计报告。
 
----
+## 4. shadcn/ui 使用要求
 
-## 4. shadcn/ui
-
-MVP 第一次初始化时固定：
+首次初始化时固定：
 
 - `components.json`；
-- Tailwind v4 theme/tokens；
-- style/base/icon choice；
-- import aliases。
+- Tailwind v4 主题和语义变量；
+- 组件样式、基础色和图标选择；
+- 导入别名。
 
-后续不重新初始化第二套 preset。
+后续不得重新初始化第二套预设。
 
 优先组件：
 
 ```text
 Button
 Card
-Field/Input/Select
-Table/Pagination
+Field / Input / Select
+Table / Pagination
 Tabs
 Sheet
-Alert/Empty/Skeleton
+Alert / Empty / Skeleton
 AlertDialog
 Sonner
 DropdownMenu
 Badge
 ```
 
-先查询当前 shadcn registry/docs。只有现成组件无法解决时才自定义基础控件。
+这些是组件名，实施时先查询当前 shadcn registry 和官方文档。只有现成组件不能解决时才自定义基础控件。
 
----
+## 5. assistant-ui 使用要求
 
-## 5. assistant-ui
+只用于创建页面：
 
-只用于 Create 页面：
-
-- Composer；
-- Message；
-- loading/cancel/error；
-- structured GenerationSpec proposal；
-- retry。
+- 输入区；
+- 消息；
+- 加载、取消和错误；
+- 结构化 `GenerationSpec` 建议；
+- 重试。
 
 不做：
 
-- attachment；
-- tool calls；
-- long-term conversation management；
-- Context Assistant；
-- Agent execution。
+- 附件；
+- 工具调用；
+- 长期会话管理；
+- 复杂上下文助手；
+- Agent 执行。
 
-assistant-ui 的外观必须使用同一套 shadcn/Tailwind tokens，不能形成第二套 AI 视觉系统。
+assistant-ui 必须使用同一套 shadcn 和 Tailwind 语义变量，不能形成第二套 AI 视觉系统。
 
----
-
-## 6. 数据表格
+## 6. 数据表格要求
 
 CI 和关系数据必须：
 
-- 后端分页；
-- type filter；
-- keyword filter；
-- 明确 total/page/page_size；
-- row detail Sheet；
-- loading/error/empty。
+- 使用后端分页；
+- 支持类型筛选；
+- 支持关键字筛选；
+- 明确总数、页码和每页数量；
+- 通过侧边抽屉展示行详情；
+- 有加载、错误和空状态。
 
-禁止一次请求并渲染整个 10k 数据集。
+禁止一次请求并渲染完整万级数据集。
 
----
+## 7. Chrome DevTools MCP 检查
 
-## 7. Chrome DevTools MCP
-
-完成后真实操作：
+实现完成后，必须真实操作：
 
 ```text
 录入正确 API Key
-生成数据集
-查看 CI 分页/筛选
-查看关系
-复制 curl
-下载 export
+→ 生成数据集
+→ 查看 CI 分页和筛选
+→ 查看关系
+→ 复制 curl
+→ 下载导出文件
 ```
 
 错误路径：
 
-- wrong key → 401 UX；
-- AI unconfigured → template fallback；
-- provider error；
-- generation validation error；
-- empty dataset list；
-- long prompt/name。
+- 错误 Key 返回 401；
+- AI 未配置时使用模板；
+- Provider 错误；
+- 规格校验错误；
+- 空数据集列表；
+- 长提示词和长名称。
 
-宽度：
+桌面宽度：
 
 ```text
 1024
@@ -154,51 +146,54 @@ CI 和关系数据必须：
 
 检查：
 
-- Console error/warning；
-- failed/duplicate Network requests；
-- overflow；
-- focus/keyboard；
-- 10k paginated table responsiveness。
+- Console 错误和警告；
+- 失败或重复的 Network 请求；
+- 内容溢出；
+- 焦点和键盘操作；
+- 万级分页表格的响应性。
 
-截图只需覆盖核心页面和关键错误，不做无意义截图矩阵。
+截图只覆盖核心页面和关键错误，不制作无意义的截图矩阵。
 
----
-
-## 8. Playwright
+## 8. Playwright 回归
 
 至少固定一条主路径：
 
 ```text
-set API key
-→ use fake/template spec
-→ generate
-→ open dataset
-→ filter CI
-→ open relation tab
-→ copy API or trigger export
+设置 API Key
+→ 使用假 Provider 或模板规格
+→ 生成数据集
+→ 打开数据集
+→ 筛选 CI
+→ 打开关系页签
+→ 复制 API 或触发导出
 ```
 
-以及一个 auth failure 测试。
+另外至少包含一个认证失败测试。
 
----
+## 9. 完成报告
 
-## 9. 完成回报
-
-在 #1 记录：
+Issue #1 真正实现后，用中文记录：
 
 - UI Skills 的 3～5 条关键决定；
-- shadcn preset/base/icon 与主要组件；
+- shadcn 预设、基础色、图标和主要组件；
 - assistant-ui 集成方式；
 - Chrome DevTools MCP 版本；
-- 检查流程、宽度、Console、Network；
+- 检查路径、宽度、Console 和 Network 结果；
 - Playwright 结果；
 - 截图位置；
-- 已知 UI 限制。
+- 已知界面限制。
 
----
+目前这些项目均未执行，不得提前填写为已完成。
 
 ## 10. 停止规则
 
-当 `Prompt → Generate → Browse → API/Export` 顺畅可用，就停止 UI 扩展。
+当以下路径顺畅可用时，就停止首版界面扩展：
 
-不要因为页面显得“太少”而增加 dashboard、统计中心、拓扑编辑器、设置中心或其他平台页面。
+```text
+描述需求
+→ 生成
+→ 浏览
+→ 使用 API 或导出
+```
+
+不要因为页面数量少而增加仪表盘、统计中心、拓扑编辑器、设置中心或其他平台页面。
