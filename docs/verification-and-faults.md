@@ -14,22 +14,24 @@ Observed world comes back
 ISL compares Expected vs Actual
 ```
 
-Ground Truth、Source Projection、Observation、Verifier 是产品核心，不是 Mock Server 后面的附加报表。
+Ground Truth、Source Projection、Observation、Verifier 是产品核心。
 
 ---
 
-## 2. Compile Base Truth 与 Run Truth 必须分层
+## 2. Compile Base Truth 与 Run Truth 分层
 
-M1 Compile 产生 immutable base world：
+M1 Compile：
 
 ```text
 Compile C12
-  Base Truth V0
-  Base Source Projections
-  Compile Manifest
+Base Truth V0
+Base Source Projections
+Compile Manifest
 ```
 
-M2 Timeline **不能修改 Compile Base Truth**。每次 Run 从 Base V0 启动自己的 lineage：
+这些是 immutable provenance。
+
+M2 每个 Run 独立 evolution：
 
 ```text
 Compile C12 / Base V0
@@ -37,63 +39,26 @@ Compile C12 / Base V0
       ↓                  ↓
 Run A                   Run B
 V0 → V1 → V2            V0 → V1
-Excel stale=1           Excel fresh
 ```
 
-Invariant：
-
-- 同一 Compile 可以启动多个独立 Run；
-- Run A mutation 不影响 Run B；
-- Run mutation 不改变 Compile Base V0；
-- Verification 必须明确 `run_id + truth_version`；
-- Source freshness/projection version 也是 run-scoped。
-
-这也是并发测试与可重放的基础。
+- Run A 不改 Compile Base；
+- Run A 不影响 Run B；
+- Source freshness/projection version run-scoped；
+- Verification 明确绑定 run_id + truth/projection version。
 
 ---
 
-## 3. Truth Version
+## 3. Truth Version / Clock
 
-Run 初始：
+Run 初始 V0 派生自 Compile Base V0。每个 canonical timeline mutation 只产生该 Run 的下一版本。
 
-```text
-Run Truth V0 = Compile Base Truth V0
-```
-
-每个 canonical timeline mutation 产生该 Run 的下一版本：
-
-```text
-Run A V0 ─ migrate VM ─→ V1
-Run A V1 ─ rename host ─→ V2
-Run A V2 ─ remove server ─→ V3
-```
-
-Source 可以落后：
-
-```text
-Run A current Truth V3
-vCenter projection → V3
-SNMP projection    → V3
-Excel projection   → V1  # intentionally stale
-```
+MVP 默认 `clock.mode: manual`；realtime/scaled later。
 
 Version 记录 digest、logical timestamp/step、predecessor、run ownership。
 
 ---
 
-## 4. Clock
-
-### `manual` — MVP
-
-用户/API 显式执行 Step，最确定、可重放、测试稳定。
-
-### `realtime` / `scaled` — later
-
-真实需求出现再做，不阻塞 MVP。
-
----
-
-## 5. Timeline Actions
+## 4. Timeline Actions
 
 Core source-neutral typed actions：
 
@@ -110,68 +75,121 @@ fault_enable
 fault_disable
 ```
 
-要求：
-
-- schema validated；
-- deterministic selector；
-- no arbitrary code；
-- event/audit record；
-- multi-action failure semantics 明确；
-- action 只影响目标 Run。
+要求 schema validation、deterministic selector、no arbitrary code、event/audit、明确失败语义、严格 Run scope。
 
 ---
 
-## 6. Fault Taxonomy
+## 5. Fault Taxonomy
 
 ### Semantic Defect
 
-Source Projection 内容错误：missing/wrong/stale field、duplicate、identity collision、wrong/missing/extra relation、format/case drift。
+改变 Source Projection 内容：missing/wrong/stale field、duplicate、identity alias/collision、wrong/missing/extra relation、format/case drift。
 
 ### Transport Fault
 
-共享 Fault Backend（M2 默认 Toxiproxy）。
+改变传输层连接/包流。
+
+**不能假设一个 Fault Backend 覆盖所有网络传输协议。** Fault capability 必须至少声明：
+
+```text
+backend
+exact version
+transport/protocol applicability (e.g. TCP only)
+fault types
+platform/privilege requirements
+```
 
 ### Protocol/Application Fault
 
-Driver/backend 原生能力，例如 HTTP 429、pagination error、SNMP error、auth/session failure。
+由 Driver/backend 原生能力负责，例如 HTTP 429、pagination error、SNMP error response/variation、auth/session failure。
 
 ### Runtime Fault
 
-source restart/unavailable、Agent disconnect、partial start 等。
-
-不同层不能混成 `chaos=true`。
+Source restart/unavailable、Agent disconnect、partial start 等。
 
 ---
 
-## 7. Toxiproxy / Fault Capability Contract
+## 6. Toxiproxy：共享 TCP Fault Backend
 
-正式能力权威顺序：
+Toxiproxy 官方实现是 **TCP proxy**。它适用于：
+
+- HTTP/HTTPS；
+- PostgreSQL/MySQL/Redis；
+- SSH/SFTP/NETCONF-over-SSH；
+- Kafka/AMQP/MQTT-over-TCP；
+- vCenter/Kubernetes API 等 TCP-based endpoints；
+- 其他实际通过 TCP 的 Source。
+
+它**不应被描述为默认 UDP fault backend**。
+
+### 版本权威顺序
 
 ```text
 exact pinned Toxiproxy version/image
       ↓
-actual integration test
+actual integration tests
       ↓
-FaultBackendCapabilities
+FaultBackendCapabilities(transport=TCP)
       ↓
 Compiler + UI
 ```
 
-M2 优先验证：latency/jitter、timeout、reset peer、bandwidth、proxy disable/down、slow-close/limit-data 等实际版本能力。
+M2 对实际 pin 版本优先验证：
 
-`packet_loss` 只有实际 pin 版本支持且测试通过才暴露；否则 capability=false。
+- latency + jitter；
+- timeout；
+- reset peer；
+- bandwidth；
+- proxy disable/down；
+- slow-close/limit-data 等实际支持项；
+- packet_loss only if pinned version supports and test passes。
 
-不能根据 upstream `main`/README 自动宣布发行能力。
-
-如未来需要 backend 不支持的网络故障，另评估 `tc/netem` 等，不在 M2 偷换高权限实现。
+不能因为 upstream `main`/README 有功能就自动扩大发行 capability。
 
 ### Endpoint
 
 ```text
-client → stable published proxy endpoint → internal source backend
+TCP client → stable published Toxiproxy endpoint → TCP source backend
 ```
 
-Admin endpoint 不公开；proxy 资源 run-scoped、labelled、cleanable/reconcilable。
+Admin endpoint 不公开；proxy 资源 run-scoped/labelled/cleaned/reconciled。
+
+---
+
+## 7. UDP 与 SNMP Fault 策略
+
+SNMP 常见采集默认使用 UDP，因此不能直接套用 Toxiproxy TCP 路径。
+
+### M3 SNMP 首选
+
+使用 snmpsim 本身可以验证的 protocol/data variation 能力，例如：
+
+- delayed response / timeout-like behavior where supported；
+- SNMP error responses；
+- changing values / missing records；
+- protocol-specific variation。
+
+这能覆盖大量 DLR SNMP Adapter 错误处理，而不引入新的高权限网络工具。
+
+### 真正 UDP transport fault — later unless needed
+
+如果必须测试真正 UDP packet drop/jitter/network impairment：
+
+- 单独设计 `UdpFaultBackend` / generic transport-fault backend；
+- 可评估 Linux `tc/netem` 等工具；
+- 明确 Linux/root/capability 权限影响；
+- 不在 M2/M3 偷偷加入 privileged host networking；
+- 不让每个 UDP Driver 自己实现一遍。
+
+因此 capability registry 必须允许：
+
+```text
+Toxiproxy: transports=[tcp]
+SNMP Driver protocol faults: snmp-specific
+UDP network backend: unavailable (until explicitly implemented)
+```
+
+UI 对 unsupported UDP transport fault 不显示假按钮。
 
 ---
 
@@ -183,7 +201,6 @@ faults:
     target: asset-api
     layer: application
     type: http-status
-    enabled: false
     params:
       status: 429
       every: 10
@@ -192,21 +209,25 @@ faults:
     target: vc-primary
     layer: transport
     type: latency
-    enabled: false
     params:
       latencyMs: 1200
       jitterMs: 100
 ```
 
-Compile/Step 前 capability gate；unsupported fault 不能 silently no-op。
+Compile/Step 前同时检查：
+
+- target Driver capability；
+- transport compatibility；
+- selected Fault Backend availability；
+- platform/Agent capability。
+
+Unsupported fault 不能 silently no-op。
 
 ---
 
 ## 9. Ground Truth APIs
 
-### Immutable Compile Base
-
-用于查看可复现初始世界：
+### Compile immutable base
 
 ```text
 GET /api/compiles/{compile}/truth/nodes
@@ -215,75 +236,38 @@ GET /api/compiles/{compile}/truth/sources/{source}
 GET /api/compiles/{compile}/manifest
 ```
 
-### Run-scoped Evolving Truth — M2
+### Run evolving truth
 
 ```text
 GET /api/runs/{run}/truth/versions
 GET /api/runs/{run}/truth/nodes?version=...
 GET /api/runs/{run}/truth/edges?version=...
 GET /api/runs/{run}/sources/{source}/projection?version=...
-GET /api/runs/{run}/truth/defects?version=...
 ```
 
-具体 URL 可优化，但 ownership 不能混淆。
-
-大结果必须 pagination/stream/export。
+具体 URL 可优化，但 ownership 不可混淆。大结果分页/stream/export。
 
 ---
 
-## 10. Observation Schema
+## 10. Observation
 
-Observation 不要求使用 canonical ID：
+Observation 不要求 canonical IDs，至少包含 metadata、nodes、edges、observed identities、attributes、producer/run/profile info。
 
-```json
-{
-  "metadata": {
-    "producer": "datalinkruntime",
-    "run_id": "...",
-    "truth_version_hint": 2
-  },
-  "nodes": [
-    {
-      "observed_id": "abc",
-      "kind": "virtual_machine",
-      "identity": {"uuid": "..."},
-      "attributes": {"name": "vm-007", "ip": "10.30.1.7"}
-    }
-  ],
-  "edges": [
-    {"type": "runs_on", "from": "abc", "to": "host-x"}
-  ]
-}
-```
+要求 batch、limits、diagnostics、digest、immutable record、large-payload handling。
 
-Observation 是 immutable submitted artifact，有 digest、size/count limits、schema diagnostics。
+Observation 必须明确 target Run；truth-version hint 不自动成为 authoritative baseline。
 
 ---
 
-## 11. Verification Profile
+## 11. Verification Profile / Matcher
 
-显式定义 identity/field/relation semantics 和 safe normalizers：exact、case-insensitive、IP、set、timestamp tolerance、numeric tolerance。
+Profile 显式定义 identity selector、field/relation mapping、安全 normalizers（exact/case-insensitive/IP/set/timestamp/numeric tolerance）。无 arbitrary Python comparator。
 
-第一版无 arbitrary Python comparator。
-
----
-
-## 12. Identity Matcher
-
-正确处理：
-
-- exact unique；
-- aliases；
-- ambiguity；
-- collision；
-- missing identity；
-- duplicate observations。
-
-使用 indexes/hash maps，不能 full O(n²)。
+Matcher 正确处理 exact/alias/ambiguity/collision/missing/duplicate，使用 indexes/hash maps。
 
 ---
 
-## 13. Findings
+## 12. Findings
 
 至少：
 
@@ -301,44 +285,36 @@ extra_relation
 stale_observation
 ```
 
-每条包含 bounded expected/actual、canonical/observed identity、path、source context，以及：
+每条 Finding 含 bounded expected/actual、identity/path/context，以及：
 
 ```text
 run_id
 truth_version
-source_projection_version (when relevant)
+source_projection_version when relevant
 verification_mode
 ```
 
 ---
 
-## 14. 两种 Verification Mode
+## 13. 两种 Verification Mode
 
 ### Source Fidelity
 
 ```text
-Observation
-  vs
-Run Source Projection at selected version
+Observation vs Run Source Projection at selected version
 ```
-
-验证 collector 是否忠实采到来源实际暴露内容。
 
 ### Canonical Outcome
 
 ```text
-Observation
-  vs
-Run Canonical Truth at selected version
+Observation vs Run Canonical Truth at selected version
 ```
 
-验证 CMDB/consumer 最终治理结果。
-
-两种模式的 expected baseline 都必须明确 version，不能默认“当前最新”后让报告无法复现。
+Baseline version 必须显式，不让历史 Report 随“当前最新状态”漂移。
 
 ---
 
-## 15. Verification Report Provenance
+## 14. Report Provenance
 
 至少：
 
@@ -349,75 +325,83 @@ run_id
 truth_version
 source_projection_version(s)
 observation_digest
-verification_profile_version/digest
+verification_profile version/digest
 compiler/normalization version
 created_at
 ```
 
-这样 Run 后续继续 Step，也不会改变历史 Report 的含义。
+Run 后续继续 Step 不改变历史 Report 含义。
 
 ---
 
-## 16. DLR / Consumer E2E
+## 15. DLR / Consumer E2E
 
 ```text
 ISL Run Source
  → DLR / representative consumer
  → normalized output
  → Observation(run_id)
- → Verify(run_id, selected truth/projection version)
+ → Verify(run_id, selected version/mode)
 ```
 
 DLR 正式 runtime 不硬依赖 ISL。
 
 ---
 
-## 17. Guided UX
+## 16. Guided UX
 
-普通用户通过 Timeline/Fault UI，不手写 action YAML。
+Timeline/Fault 使用 Guided UI，不要求普通用户手写 YAML。
 
-Verify UI 必须清楚显示：
+Fault UI 必须根据：
 
-- 当前 Run；
-- selected Truth Version；
-- Source Fidelity / Canonical Outcome；
-- Source Projection Version；
-- findings filters/detail。
+```text
+Source transport/protocol
++ DriverCapabilities
++ FaultBackendCapabilities
++ Agent platform capabilities
+```
 
-如果用户选择旧 Observation，要明确它正在和哪个 historical baseline 比较。
+动态决定可用项。
+
+例如 SNMP/UDP Source 不能仅因为系统装了 Toxiproxy 就显示 TCP packet-loss/latency proxy 能力。
+
+Verify UI 明确 Run、Truth Version、Projection Version、Verification Mode。
 
 ---
 
-## 18. 性能
+## 17. 性能
 
 100k entity：identity indexes、batch normalize、edge hashes、paginated findings、必要时 DB batch/temp tables。
 
-Run versioning 不应每次无脑复制整个 100k Graph；实现可以选择 snapshot + delta/materialization 等策略，但 API/领域语义必须表现为独立可查询 Version。
-
-优化不能破坏历史版本可验证性。
+Run versioning 可使用 snapshot+delta/materialization，不能以性能为理由破坏历史版本/Run 隔离。
 
 ---
 
-## 19. Required Tests
+## 18. Required Tests
 
 ### Run isolation
 
-- same Compile starts Run A and Run B；
-- mutate A → B remains V0；
-- mutate B independently；
-- Compile Base V0 unchanged；
-- report on A V1 remains reproducible after A advances to V2。
+- same Compile starts Run A/B；
+- mutate/fault A → B unchanged；
+- Compile Base unchanged；
+- historical report remains reproducible after later steps。
 
-### Timeline
+### TCP Fault
 
-ordering、selector、create/patch/delete/relink、source freeze/stale、unsupported action、failed step semantics。
+- exact pinned Toxiproxy capability tests；
+- latency/timeout/reset/bandwidth/packet_loss-if-declared/recovery/cleanup；
+- backend declares `transport=TCP`；
+- unsupported transport rejected。
 
-### Fault
+### SNMP/UDP
 
-actual pinned capability tests；baseline/latency/timeout/reset/bandwidth/packet_loss-if-declared/recover/cleanup；unsupported rejected。
+- default UDP path does not get falsely proxied through Toxiproxy；
+- protocol delay/error/variation uses tested snmpsim capability；
+- true UDP network fault remains unavailable unless a dedicated backend exists；
+- UI/API clearly reports unsupported capability。
 
 ### Verifier
 
-perfect/missing/extra/duplicate/alias/ambiguous/collision/wrong field/relation/stale/order-independent/10k smoke/two modes/version provenance。
+perfect/missing/extra/alias/ambiguity/collision/duplicate/wrong field/relation/stale/order-independent/10k/two modes/version provenance。
 
-Run isolation tests 是 M2 完成条件，不可后置。
+Transport compatibility tests are M2/M3 correctness gates, not optional documentation。
