@@ -1,519 +1,407 @@
 # InfraSourceLab 总体架构
 
-## 1. 架构目标
+## 1. 核心架构性质
 
-InfraSourceLab 的架构服务于五个核心性质：
+InfraSourceLab 必须同时满足：
 
-1. **确定性**：同一 Scenario Revision 在相同编译器/生成器版本下可重复构建；
-2. **可扩展**：新增数据源主要增加 Driver，不侵入核心编译器；
-3. **不造协议轮子**：优先编排成熟模拟器或真实轻量服务；
-4. **可验证**：Ground Truth 从编译开始就是一等数据；
-5. **低交互成本**：普通用户通过 AI / Visual Builder 创建场景，YAML 只是 Expert representation。
+1. **确定性**：同一 immutable Revision 在相同版本环境下可重复 Compile；
+2. **Run 隔离**：同一 Compile 启动多个 Run 时，Timeline/Fault/Source freshness 不互相污染；
+3. **可扩展**：新增数据源主要增加 Driver；
+4. **不造协议轮子**：优先成熟 Simulator / real service；
+5. **可验证**：Ground Truth / Source Projection / Observation / Verification 是一等模型；
+6. **低交互成本**：AI / Builder 为普通入口，YAML 只是 Expert representation。
 
 ---
 
 ## 2. 总体架构
 
 ```text
-┌──────────────────────────────────────────────────────────────┐
-│ Web                                                          │
-│ React 19 + TypeScript + Vite 7                               │
-│ Tailwind CSS v4 + shadcn/ui                                  │
-│ assistant-ui + Monaco (Expert YAML) + i18next                │
-│                                                              │
-│ AI Create / Visual Builder / Scenario / World / Sources      │
-│ Timeline / Runs / Verification / Expert YAML                 │
-└────────────────────────┬─────────────────────────────────────┘
-                         │ HTTP / JSON / SSE
-                         ▼
-┌──────────────────────────────────────────────────────────────┐
-│ Control                                                      │
-│ FastAPI + Pydantic + SQLAlchemy + Alembic                   │
-│                                                              │
-│ Authoring / Scenario / Revision / Compiler                   │
-│ Truth Graph / Projection / Driver Registry                   │
-│ Run State / Timeline / Observation / Verification            │
-│ AI Gateway / Importers                                       │
-└───────────────┬──────────────────────────────┬───────────────┘
-                │                              │
-                ▼                              ▼
-┌──────────────────────────┐       ┌───────────────────────────┐
-│ PostgreSQL               │       │ Lab Agent                 │
-│ metadata / truth / runs  │       │ privileged runtime plane │
-│ projections / reports    │       │ Docker orchestration      │
-└──────────────────────────┘       │ allowlisted Drivers       │
-                                   └─────────────┬─────────────┘
-                                                 │
-                        ┌────────────────────────┼───────────────────────┐
-                        │                        │                       │
-                        ▼                        ▼                       ▼
-              Protocol Simulators        Real Services          Contract/Replay
-              vcsim / KWOK /             PostgreSQL /           Mockoon / Prism /
-              snmpsim / Redfish /        Redis / Kafka /        Hoverfly / etc.
-              FakeNOS / ...              MQTT / ...
-                        │                        │                       │
-                        └────────────────────────┼───────────────────────┘
-                                                 ▼
-                                        Per-Run Lab Network
-                                                 │
-                                                 ▼
-                                       DLR / CMDB / Test Client
-                                                 │
-                                                 ▼
-                                          Observation API
-                                                 │
-                                                 ▼
-                                              Verifier
+┌────────────────────────────────────────────────────────────┐
+│ Web                                                        │
+│ React 19 + TypeScript + Vite 7                             │
+│ Tailwind CSS v4 + shadcn/ui                                │
+│ assistant-ui + Monaco (Expert YAML)                        │
+│                                                            │
+│ AI Create / Builder / World / Sources / Timeline / Verify  │
+└──────────────────────┬─────────────────────────────────────┘
+                       │ HTTP / JSON / SSE
+                       ▼
+┌────────────────────────────────────────────────────────────┐
+│ Control                                                    │
+│ FastAPI + Pydantic + SQLAlchemy + Alembic                 │
+│                                                            │
+│ Authoring / Scenario / Revision / Compile                  │
+│ Truth / Projection / Driver Registry                       │
+│ Run / Timeline / Observation / Verification                │
+│ AI Gateway / Importers                                     │
+└──────────────┬──────────────────────────────┬─────────────┘
+               │                              │
+               ▼                              ▼
+┌─────────────────────────┐       ┌──────────────────────────┐
+│ PostgreSQL              │       │ Lab Agent                │
+│ metadata/truth/runs/... │       │ Docker privilege         │
+└─────────────────────────┘       │ allowlisted Drivers      │
+                                  └────────────┬─────────────┘
+                                               │
+             ┌─────────────────────────────────┼─────────────────────┐
+             ▼                                 ▼                     ▼
+     Protocol Simulators                Real Services        Contract/Replay
+     vcsim/KWOK/SNMP/...                DB/MQ/LDAP/...       Mockoon/...
+             └─────────────────────────────────┼─────────────────────┘
+                                               ▼
+                                      Per-Run Lab Network
+                                               │
+                                               ▼
+                                     DLR / CMDB / Client
+                                               │
+                                               ▼
+                                        Observation API
+                                               │
+                                               ▼
+                                            Verifier
 ```
 
-### 开发时前端设计闭环
+前端开发闭环：
 
 ```text
-Product requirement
-      ↓
-UI Skills / design playbook
-      ↓
-shadcn component composition
-      ↓
-Implementation
-      ↓
-Chrome DevTools MCP real-browser inspection
-      ↓
-visual / console / network / performance iteration
-      ↓
-Playwright regression
+Requirement → UI Skills → shadcn composition → implementation
+            → Chrome DevTools MCP → iterate → Playwright
 ```
 
-`ui-skills` 与 `chrome-devtools-mcp` 是开发/验收工具，不进入产品 runtime。Qoder 的具体使用见 `docs/qoder-frontend-tooling.md`。
+详情：`docs/frontend-design.md`、`docs/qoder-frontend-tooling.md`。
 
 ---
 
-## 3. Control 与 Lab Agent 分离
+## 3. Control 与 Lab Agent
 
-启动容器、创建网络、挂载文件、分配端口等能力接近 Docker 主机管理权限。如果 Control 直接挂载 Docker socket，一个普通 Web/API 漏洞可能扩大为宿主机高权限风险。
+Control 不挂 Docker socket。
 
 ### Control
 
-负责可信平台状态：
+- unsaved Working Copy validate/estimate；
+- Scenario / immutable Revision；
+- Compile；
+- Base Truth / Base Projection；
+- Run / runtime Truth lineage；
+- Timeline / Verification；
+- AI / Imports；
+- typed Agent Command。
 
-- unsaved Working Copy validation / estimate；
-- Scenario CRUD / immutable Revision；
-- 编译；
-- Truth Graph；
-- Run 状态机；
-- verification；
-- AI Gateway；
-- importer；
-- 发出结构化 Agent Command。
+### Agent
 
-### Lab Agent
+唯一接触 Docker：
 
-唯一可以接触 Docker Engine：
+- allowlisted image/runtime；
+- per-run network/volume/workspace；
+- Driver start/health/apply/stop/cleanup；
+- bounded logs；
+- reconcile/GC。
 
-- 按 Driver allowlist 启动允许的镜像；
-- 创建 per-run network / volumes；
-- 写生成配置；
-- health；
-- driver-defined lifecycle action；
-- 受控日志；
-- teardown / GC。
-
-Agent **不接受任意 shell command、任意 image name 或任意 host mount**。
-
-第一版 Control 与 Agent 可以同机，但协议边界从第一天存在。
+禁止任意 shell/image/host mount。
 
 ---
 
-## 4. 核心领域模块
-
-后端保持模块化单体：
+## 4. 核心模块
 
 ```text
-backend/
-  app/
-    authoring/
-    scenario/
-    compiler/
-    truth/
-    projection/
-    drivers/
-    runs/
-    timeline/
-    observations/
-    verification/
-    ai/
-    imports/
-    api/
+backend/app/
+  authoring/
+  scenario/
+  compiler/
+  truth/
+  projection/
+  drivers/
+  runs/
+  timeline/
+  observations/
+  verification/
+  ai/
+  imports/
+  api/
 ```
 
 ### authoring
 
-处理**尚未持久化**的 Working Copy：
+处理**未保存 Working Copy**：parse、normalize、schema/semantic/capability/security validation、estimate、semantic digest。
 
-- parse；
-- schema/semantic validation；
-- capability validation；
-- resource estimate；
-- normalized typed document；
-- semantic digest；
-- structured diagnostics/change summary。
-
-它不能要求已经存在 `scenario_id`，否则 AI-first 新建流程会被迫“先保存一个空场景”。
+不要求 `scenario_id`。
 
 ### scenario
 
-- Scenario metadata；
-- Working Copy wire model；
-- immutable Revision；
-- revision provenance；
-- source/semantic digests。
-
-AI、Visual Builder、Expert YAML 最终都读写同一 Scenario model/Working Copy，不存在三套业务模型。
+保存 Scenario metadata、Working Copy wire model、immutable Revision、raw/normalized provenance。
 
 ### compiler
 
-```text
-Immutable Scenario Revision
-  → parse normalized document
-  → schema validation
-  → semantic validation
-  → normalize defaults
-  → deterministic allocation
-  → Truth Graph
-  → Source Projection
-  → Driver Plan
-  → Compile Manifest
-```
+只接受 immutable Revision：
 
-**Authoring Preview 可以对未保存 Working Copy validate/estimate，但 authoritative Compile 只接受 immutable Scenario Revision。**
+```text
+Revision
+ → normalize/validate
+ → deterministic allocation
+ → Base Truth V0
+ → Base Source Projections
+ → Driver Plans
+ → Compile Manifest
+```
 
 Compiler 不启动容器。
 
-### truth
+### truth / projection
 
-维护 canonical entities / relationships 及每个 Truth Version。
+需要明确两层：
 
-### projection
+```text
+Compile Base Truth / Projection      immutable
+Run Truth Version lineage            mutable only inside that Run
+Run Source Projection versions       mutable/freshness only inside that Run
+```
 
-把 canonical world 转为来源可见世界：field mapping、identity mapping、omit、duplicate、corruption、staleness、source-specific relationships。
+### runs / timeline
 
-### drivers
+Run 从某个 Compile 的 Base Truth V0 克隆/引用初始状态，然后维护自己的 Truth/Projection lineage。
 
-Driver Registry + capability contracts。Core 只知道能力，不依赖具体工具内部实现。
+### verification
 
-### runs
-
-协调 Lab Run 的 prepare/start/ready/stop/fail/cleanup。
-
-### timeline
-
-通过 typed action 对 Truth Version、Source Projection 和 Driver runtime 执行变化。
-
-### observations / verification
-
-接受下游结果，标准化并与 Source Projection / Ground Truth 比较。
-
-### ai
-
-AI 是 Scenario authoring / import / explain 层，不拥有运行面高权限。
+Source Fidelity 可以对 Run 当前 Source Projection；Canonical Outcome 可以对 Run 当前 canonical Truth（或明确指定 version）。
 
 ---
 
-## 5. Scenario Authoring 架构
-
-产品不是 YAML-first。
+## 5. Authoring 模型
 
 ```text
 AI Create ────────┐
 Visual Builder ───┼──→ Scenario Working Copy
 Expert YAML ──────┘          │
-                             ├─ parse/schema diagnostics
-                             ├─ semantic diagnostics
-                             ├─ driver capability validation
-                             ├─ resource estimate
-                             └─ semantic digest
+                             ├─ Validate
+                             ├─ Estimate
+                             └─ semantic_digest
                              │
                              ▼
-                       Save Revision
+                         User Save
+                             ▼
+                     Immutable Revision
 ```
 
-### 单一状态原则
+三种入口是同一 semantic model。
 
-Visual Builder 不维护独立业务 JSON，YAML Editor 也不维护独立业务副本。可以有 UI form state/editor buffer，但提交 Authoring service 后必须收敛到同一 typed document。
-
-Builder 改了而 Expert YAML 语义没变、或反之，属于严重 bug。
-
-### Working Copy 不等于 Revision
-
-Working Copy 可以反复修改和预览；只有显式 Save 才产生 immutable Revision。
-
-AI Candidate 只修改 Working Copy，不能自动 Save。
+Builder 只 patch 已知路径并保留未触碰的合法 advanced fields；不承诺保留 YAML 所有 comment/formatting。
 
 ---
 
-## 6. Authoring / Persistence / Compile API 边界
+## 6. Digests
 
-这是产品易用性与可审计性的关键边界。
+```text
+source_digest
+  = raw source text hash
 
-### 6.1 Unsaved authoring API
+semantic_digest
+  = canonical normalized typed document hash
+```
 
-新建场景还没有 Scenario ID，因此必须允许直接提交 Working Copy payload：
+`source_digest` 用于 artifact provenance；`semantic_digest` 用于 AI base/stale、semantic identity、Compile input identity。
+
+AI Candidate 必须携带 `base_semantic_digest`；M1 起当前 digest 不一致时禁止 blind Apply。
+
+---
+
+## 7. API 边界
+
+### Unsaved Authoring
 
 ```text
 POST /api/authoring/validate
 POST /api/authoring/estimate
-POST /api/ai/scenario-candidate     # M1
+POST /api/ai/scenario-candidate   # M1
 ```
 
-请求中携带当前 typed document / YAML representation、base semantic digest（如有）和必要上下文。
+直接接受 Working Copy payload，不要求 Scenario ID，不产生 authoritative Revision/Compile。
 
-这些 API：
-
-- 可以在保存前使用；
-- 不产生 authoritative Revision；
-- 不启动容器；
-- 不产生 authoritative Compile Manifest。
-
-### 6.2 Scenario persistence API
+### Persistence
 
 ```text
-GET  /api/scenarios
-POST /api/scenarios
-GET  /api/scenarios/{id}
-GET  /api/scenarios/{id}/revisions
-POST /api/scenarios/{id}/revisions
-GET  /api/scenarios/{id}/revisions/{revision_id}
+GET/POST /api/scenarios
+GET      /api/scenarios/{id}
+GET/POST /api/scenarios/{id}/revisions
+GET      /api/scenarios/{id}/revisions/{revision_id}
 ```
 
-创建 Scenario metadata 与保存 Revision 是两个概念；实现可以在 UX 上合并为一次“Create/Save”动作，但 domain 里必须保留 immutable revision semantics。
-
-### 6.3 Compile API
-
-建议 noun-style：
+### Compile
 
 ```text
 POST /api/compiles
 GET  /api/compiles/{id}
 ```
 
-`POST /api/compiles` 必须引用：
+`POST /api/compiles` 必须引用 `scenario_revision_id`。
+
+### Base Ground Truth
 
 ```text
-scenario_revision_id
+GET /api/compiles/{id}/truth/nodes
+GET /api/compiles/{id}/truth/edges
+GET /api/compiles/{id}/truth/sources/{source}
+GET /api/compiles/{id}/manifest
 ```
 
-而不是任意浏览器 Working Copy。
+这些是 immutable base world / projection。
 
-Compile Manifest 记录 revision/source/semantic digest 与编译器/生成器/Driver provenance。
-
-### 6.4 Run API
+### Run
 
 ```text
-POST /api/runs
-GET  /api/runs
+POST /api/runs      # references successful compile_id
 GET  /api/runs/{id}
 POST /api/runs/{id}/stop
 POST /api/runs/{id}/cleanup
 ```
 
-Start Run 必须引用一个成功且完整的 `compile_id` / immutable Compile Manifest。不能从当前未保存 Working Copy 直接启动。
-
-### 6.5 Ground Truth / Observation / Verify
+### Run-scoped evolving Truth — M2
 
 ```text
-/api/compiles/{id}/truth/...
-/api/runs/{id}/sources
-/api/runs/{id}/timeline
-/api/runs/{id}/observations
-/api/runs/{id}/verify
+GET /api/runs/{id}/truth/versions
+GET /api/runs/{id}/truth/nodes?version=...
+GET /api/runs/{id}/truth/edges?version=...
+GET /api/runs/{id}/sources/{source}/projection?version=...
+POST /api/runs/{id}/timeline/steps/...
 ```
 
-Ground Truth API 必须分页/filter，测试程序不直读内部 DB。
+具体 URI 可按实现优化，但**Compile truth 与 Run truth 的 ownership 不能混淆**。
+
+### Observation / Verify
+
+```text
+POST /api/runs/{id}/observations
+POST /api/runs/{id}/verify
+```
+
+Verification report 必须记录 run_id、truth_version、source projection version、profile、observation digest。
 
 ---
 
-## 7. Revision Digest 与 AI Staleness
+## 8. Compile / Run Truth 隔离
 
-Builder 与 YAML 的序列化格式可能不同，不能仅靠 raw text hash 判断“语义是否变化”。
-
-每个 Revision/Working Copy 建议至少有：
+这是重要 invariant。
 
 ```text
-source_digest    = raw YAML/source text 的 hash
-semantic_digest  = canonical normalized typed document 的 hash
+Revision R7
+   ↓
+Compile C12
+Base Truth V0 (immutable)
+   ├──────────────────────┐
+   ↓                      ↓
+Run A                    Run B
+V0 → V1 → V2             V0 → V1
+Source A stale=1          Source A fresh
 ```
 
-用途：
+要求：
 
-- `source_digest`：精确 artifact provenance / 原文审计；
-- `semantic_digest`：AI Candidate base、Builder/YAML 同步、semantic staleness、compile input identity。
+- Run A Timeline 不修改 Compile C12 Base Truth；
+- Run A 不修改 Run B；
+- 同 Compile 可重复启动多个独立 Run；
+- Run restart/reconcile 恢复自己的 current Truth/Projection state；
+- Verification 明确绑定哪个 Run + Truth Version。
 
-AI Candidate 必须携带 `base_semantic_digest`。
-
-M1 起的最小安全合同：
-
-```text
-candidate.base_semantic_digest == current Working Copy semantic_digest
-```
-
-才允许直接 Apply；不相等必须阻止 blind overwrite。M5 再提供 richer 3-way diff/rebase/regenerate UX。
+数据库设计必须可表达 scope，例如 TruthVersion 具有 `compile_id` base provenance 与可选/明确 `run_id` runtime ownership，不能只用一个全局递增版本号。
 
 ---
 
-## 8. Driver 架构
-
-### Driver Contract
+## 9. Driver Contract
 
 ```python
 class Driver(Protocol):
-    name: str
-    version: str
-
     def capabilities(self) -> DriverCapabilities: ...
     def validate(self, source: CompiledSource) -> list[Diagnostic]: ...
     def render(self, source: CompiledSource, workspace: Path) -> DriverManifest: ...
-    async def start(self, ctx: RunContext, manifest: DriverManifest) -> RuntimeEndpoint: ...
-    async def health(self, ctx: RunContext) -> Health: ...
-    async def apply(self, ctx: RunContext, action: TimelineAction) -> ActionResult: ...
-    async def stop(self, ctx: RunContext) -> None: ...
-    async def cleanup(self, ctx: RunContext) -> None: ...
+    async def start(self, ctx, manifest) -> RuntimeEndpoint: ...
+    async def health(self, ctx) -> Health: ...
+    async def apply(self, ctx, action) -> ActionResult: ...
+    async def stop(self, ctx) -> None: ...
+    async def cleanup(self, ctx) -> None: ...
 ```
 
-Driver 必须声明：protocol、feature、timeline、fault、architecture、version、license、resource hints。
+Core 不 import 具体 Driver implementation。
 
-Driver 类型：
+### Capability rule
 
-- `artifact`；
-- `contract-mock`；
-- `protocol-emulator`；
-- `real-service`；
-- `record-replay`；
-- `external`。
+```text
+exact pinned backend version
+      ↓ integration test
+DriverCapabilities
+      ↓ Compiler / UI
+```
 
-Compiler 不 import 具体 Driver implementation，只通过 registry/capability contract 交互。
-
-### Backend capability 以实际 pin 版本为准
-
-不能因为上游 `main` 有某能力就宣称当前 Driver 可用。每个默认 Driver：
-
-- pin 明确版本/image tag/digest；
-- registry 声明该版本 capability；
-- integration test 验证关键能力；
-- 升级版本时重跑 compatibility tests。
+上游 `main` 有能力不等于当前 ISL Driver 有能力。
 
 ---
 
-## 9. Lab Run 生命周期
+## 10. Run 生命周期
 
 ```text
-DRAFT WORKING COPY
+Working Copy
   ↓ Save
 REVISION
   ↓ Compile
-COMPILED
+COMPILED (Base V0 immutable)
   ↓ Start
 PREPARING
   ↓
 STARTING
   ↓ health
-READY
-  ↓ step / faults / observations
+READY (Run-scoped Truth/Projection state)
+  ↓ timeline/fault/observation
 READY
   ↓ Stop
-STOPPING
-  ↓
 STOPPED
   ↓ Cleanup
 CLEANED
 ```
 
-异常进入 `FAILED`，随后允许/要求 cleanup。
-
-关键合同：
-
-- Run 引用 immutable Revision + Compile Manifest；
-- 所有容器/network/volume/resource 使用 run-scoped labels；
-- cleanup 幂等；
-- Control 重启后根据 Agent + real runtime state reconcile；
-- DB 状态不等于 Docker 真实状态。
+失败进入 FAILED 并保持可解释 cleanup/reconcile。
 
 ---
 
-## 10. Per-Run 隔离
+## 11. Per-Run 隔离
 
-每次 Run 建独立 network，例如 `isl-run-<id>`。
-
-统一 label：
+每 Run 独立 network/workspace/resources：
 
 ```text
 io.infrasourcelab.managed=true
 io.infrasourcelab.run=<run_id>
 io.infrasourcelab.driver=<driver>
-io.infrasourcelab.source=<source_name>
+io.infrasourcelab.source=<source>
 ```
 
-原则：
-
-- 默认不 publish 到 `0.0.0.0`；
-- 需要宿主机访问时绑定 `127.0.0.1` 随机端口；
-- 用户显式 LAN 暴露时才开放；
-- source secrets 每 run 生成；
-- teardown 只删除本 run label 的资源。
+默认 endpoint internal/127.0.0.1；不默认 0.0.0.0；cleanup 只删除本 Run labels。
 
 ---
 
-## 11. 数据存储
+## 12. 数据存储
 
 PostgreSQL 16。
 
-核心表族：
+至少：
 
 ```text
 scenarios
 scenario_revisions
-compile_manifests
-truth_versions
-truth_nodes
-truth_edges
-source_projections
+compiles / compile_manifests
+compile_truth_nodes / compile_truth_edges (或等价 immutable base scope)
 lab_runs
-run_sources
-run_events
+truth_versions (run-scoped lineage)
+truth_nodes / truth_edges versioned runtime state (实现可优化)
+source_projections / projection_versions
+run_sources / run_events
 observations
 verification_reports
 ```
 
-Revision 至少保存：
+不要求按上述表名逐字实现，但 ownership 必须明确：**base compile state immutable，runtime state run-scoped**。
 
-```text
-raw source text
-normalized typed document
-source_digest
-semantic_digest
-schema version
-created_at / sequence
-```
-
-第一阶段不引入图数据库。
-
-生成文件使用 workspace/artifact store：
-
-```text
-runs/<run-id>/
-  manifest.json
-  sources/<name>/...
-  reports/...
-```
-
-DB 保存 path/digest/metadata。
+Artifacts 不塞大 JSONB，使用 run/compile workspace + digest/metadata。
 
 ---
 
-## 12. 前端信息架构
-
-不继承 DLR Shell/Catalog，不以 Monaco 为主工作区。
-
-一级入口建议：
+## 13. 前端 IA
 
 ```text
 Create Lab / Home
@@ -524,179 +412,55 @@ Verification
 Settings
 ```
 
-Scenario detail：
+Scenario：Overview / Builder / World / Sources / Timeline / Runs / Verify / Expert YAML。
+
+新建 M0/M1：
 
 ```text
-Overview
-Builder
-World
-Sources
-Timeline
-Runs
-Verify
-Expert YAML
+[ AI Prompt ]
+Start from: [Builder] [Template] [Expert YAML]
 ```
 
-新建场景：
+Import 在 M5 真实可用前不放主 CTA。
 
-```text
-What do you want to simulate?
-[ AI composer + examples ]
-
-Start from
-[ Guided Builder ] [ Template ] [ Expert YAML ]
-```
-
-`Import` 在 M5 Importer Registry 真正可用前不作为可点击主入口；不要提前放一个 dead/disabled fake CTA。
-
-具体页面布局由 UI Skills 指导、shadcn 组件组合和真实 Chrome 迭代决定，不把旧截图/旧产品布局写死为架构。
+前端正式使用 shadcn/ui + assistant-ui；不采用 Ant Design/DLR UI。
 
 ---
 
-## 13. 前端技术与组件边界
+## 14. AI
 
-运行时：
+基础 AI 从 M1：OpenAI-compatible provider abstraction。AI Provider 未配置时，non-AI core 正常工作。
 
-| 类别 | 选型 |
-|---|---|
-| Framework | React 19 + TypeScript |
-| Build | Vite 7 |
-| Styling | Tailwind CSS v4 |
-| Component system | shadcn/ui |
-| AI UX | assistant-ui |
-| Expert editor | Monaco Editor |
-| i18n | i18next |
-| component tests | Vitest + Testing Library |
-| browser regression | Playwright |
+AI 可 validate/estimate/propose；不可自动 Save、authoritative Compile、Start/Stop/Fault/Docker/Secret。
 
-开发/验收：
-
-| 工具 | 作用 |
-|---|---|
-| UI Skills | 页面设计、交互与视觉工程参考 |
-| Chrome DevTools MCP | 实机点击、截图、Console、Network、Performance、响应式检查 |
-
-明确不采用 Ant Design / Ant Design Pro / DLR Design System。
-
-详见 `docs/frontend-design.md` 与 `docs/qoder-frontend-tooling.md`。
+M5 扩展 attachments/imports/context/tools/frozen snapshot/3-way conflict/generative UI。
 
 ---
 
-## 14. AI 架构
+## 15. Browser Gate
 
-基础 authoring 从 M1 开始可真实使用，但 AI 是 optional enhancement：**未配置 AI Provider 时 Builder/Expert YAML/validate/estimate/compile/run 仍必须可用。**
+UI Wave 必须经过：
 
-```text
-User prompt
-+ current Scenario Working Copy
-+ Scenario schema
-+ Driver Capability Registry
-+ resource policy
-        ↓
-       LLM
-        ↓
-Scenario Candidate
-        ↓
-strict parse / schema / semantic / capability / resource validation
-        ↓
-structured proposal
-        ↓
-User Apply → Working Copy
-```
-
-Provider abstraction：
-
-```python
-class AiProvider(Protocol):
-    async def complete(self, request: AiRequest) -> AiResponse: ...
-```
-
-M1 至少 OpenAI-compatible HTTP provider。Provider secret 只在 server-side；Web 只能看到 configured/unconfigured/health-like capability state，不得到 secret。
-
-### AI 权限
-
-AI 可：
-
-- 读 Scenario schema；
-- 读 Driver capabilities；
-- validate / estimate；
-- 提议修改；
-- 解释 diagnostics / verification。
-
-AI 不可自动：
-
-- Save Revision；
-- authoritative Compile；
-- Start/Stop/Delete Run；
-- Step Timeline / destructive Fault；
-- 任意 shell/Docker；
-- 绕过 driver/image allowlist；
-- 读取 secrets。
-
-### M5 扩展
-
-M5 不再“第一次接 AI”，而增加：attachments/importers、context snippets、read-only tool calls、Regenerate/frozen snapshots、advanced 3-way conflict UX 和 richer generative UI。
+- UI Skills；
+- shadcn reuse；
+- Chrome DevTools MCP：flow/screenshots/Console/Network/1024–1920/performance；
+- Playwright regression。
 
 ---
 
-## 15. 前端验收架构
+## 16. 不可破坏约束
 
-UI Wave 完成定义包含真实 Chrome：
-
-```text
-Agent implementation
-    ↓
-Chrome DevTools MCP
-    ├─ click flow
-    ├─ screenshot
-    ├─ console
-    ├─ network
-    ├─ performance trace (heavy pages)
-    └─ responsive widths
-    ↓
-fix / iterate
-    ↓
-Playwright regression
-```
-
-至少验证 1024 / 1280 / 1440 / 1920。实验平台不强制 mobile-first，但不能出现基本布局/操作歧义。
-
----
-
-## 16. Observability
-
-平台至少输出：structured logs、run lifecycle events、source health、start/compile duration、entity/edge counts、Agent command duration/error、verification summary。
-
-后期可加 Prometheus metrics，M0 不引入完整 tracing stack。
-
----
-
-## 17. 可恢复性与 GC
-
-从 M0 考虑：
-
-- run-scoped labels；
-- Agent startup reconciliation；
-- manual cleanup；
-- orphan detection；
-- TTL 可选；
-- cleanup dry-run；
-- 不删除未知/无 ISL label 资源。
-
----
-
-## 18. 核心不可破坏约束
-
-后续任何 Wave 不得静默改变：
-
-1. AI-first / Builder / Expert YAML 的 authoring 层级；
-2. Working Copy 可未保存 validate/estimate；
-3. authoritative Compile 只基于 immutable Revision；
-4. Run 只基于成功 Compile Manifest；
-5. Truth-first + Source Projection；
-6. Core 不重新实现成熟协议；
-7. Control 无 Docker socket；
-8. Agent typed command + allowlisted runtime；
-9. AI 无运行面写权限；
-10. shadcn/ui 是唯一主要通用组件体系；
-11. Driver capabilities 以实际 pin 版本和测试为准。
+1. AI-first / Builder / Expert YAML；
+2. unsaved validate/estimate；
+3. Compile only immutable Revision；
+4. Run only successful Compile；
+5. Compile Base Truth immutable；
+6. runtime Truth/Projection **per Run isolated**；
+7. semantic_digest stale safety；
+8. Truth-first + Projection；
+9. no mature protocol reimplementation；
+10. Control no Docker socket；
+11. Agent typed/allowlisted；
+12. AI no runtime write privilege；
+13. shadcn/ui is primary component system；
+14. capabilities reflect exact tested versions。
