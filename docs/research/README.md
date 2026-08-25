@@ -1,26 +1,30 @@
-# Historical Research — Not MVP Scope
+# 历史调研说明
 
-This folder preserves the early survey of protocol simulators, service virtualization tools and CMDB data-source coverage.
+> **本目录只保存早期工具调研，不属于当前 MVP 实现范围。**
 
-It is **reference material only**.
+这些文档记录了协议模拟器、服务虚拟化工具、真实轻量服务和 CMDB 数据源覆盖情况，目的是避免未来出现具体需求时重复调研或重复造轮子。
 
-Current product scope is defined by:
+当前产品范围由以下内容决定：
 
-- `README.md`
-- `docs/product.md`
-- `docs/architecture.md`
-- Issue #1
+1. `README.md`；
+2. `docs/status.md`；
+3. `docs/product.md`；
+4. `docs/architecture.md`；
+5. 开放的 Issue #1 和 #2。
 
-Qoder and reviewers must not treat the projects or capability maps in this folder as implementation requirements for the MVP.
+Qoder、审查者和后续开发者不得把本目录中的项目清单、阶段编号或能力地图当成当前开发要求。
 
-The current MVP is only:
+当前 MVP 仍然只计划完成：
 
 ```text
-Natural-language prompt / template
-→ validated GenerationSpec
-→ deterministic CI records + relations
+自然语言或模板
+→ 经过校验的 GenerationSpec
+→ 确定性生成 CI 与关系
 → Bearer Token REST API
-→ JSON / CSV / XLSX export
+→ JSON / CSV 导出
+→ 简单可用界面
 ```
 
-Protocol simulators, real-service orchestration, lifecycle/fault injection, verifier, remote Agents and generalized importers are intentionally deferred. Revisit one researched tool only when a concrete post-MVP requirement proves that the generic API/file interface is insufficient, and re-check its current release, maintenance status and license at that time.
+协议模拟器、真实服务编排、生命周期、故障注入、自动验证、远程 Agent 和通用导入器均已延期。
+
+只有当 MVP 真正实现并完成 DLR 或 CMDB 实际使用后，某个具体需求证明通用 REST 或文件接口不足，才重新查看对应调研，并重新核对当时的版本、维护状态、许可证、运行成本和适配价值。
