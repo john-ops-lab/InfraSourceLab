@@ -1,408 +1,257 @@
-# 安全与第三方许可证边界
+# 安全与许可证边界
 
 ## 1. 威胁模型
 
-InfraSourceLab 第一阶段是本地/自托管、可信管理员/开发团队、allowlisted Drivers、测试数据环境。
+InfraSourceLab MVP 是：
 
-它不是互联网不可信用户的任意容器平台、SaaS multi-tenant sandbox 或任意脚本/镜像执行器。
+- 本地或可信内网；
+- 单用户；
+- 生成测试数据；
+- 一个普通 Web/API 应用；
+- 默认监听 localhost。
 
-但以下输入依然必须视为**不可信数据**：
+它不是：
 
-- 用户手写 Scenario/YAML；
-- AI Candidate；
-- Visual Builder payload；
-- OpenAPI/HAR/Postman/YANG/capture；
-- Observation；
-- 第三方 Source 返回内容。
+- 公网 SaaS；
+- 多租户系统；
+- 容器执行平台；
+- 任意脚本平台；
+- 企业身份管理系统。
 
-“本地可信用户”不是跳过 parser/resource/security limits 的理由。
+安全措施必须覆盖真实风险，但不能把首版拖成安全平台建设。
 
 ---
 
-## 2. Docker 权限边界
+## 2. API 认证
+
+配置：
 
 ```text
-Web → Control → typed Agent Command → Lab Agent → Docker
+ISL_API_KEY=<secret>
 ```
 
-Control 禁止直接拥有 Docker socket。
+所有 `/api/v1/*` 数据、生成、删除和导出接口要求：
 
-Agent 只接受结构化 command，例如：
-
-```json
-{
-  "operation": "start_source",
-  "run_id": "...",
-  "driver": "postgresql",
-  "manifest_id": "..."
-}
+```http
+Authorization: Bearer <ISL_API_KEY>
 ```
 
-禁止任意 shell、image、host mount、privileged/host-network flags。
+要求：
 
-Driver/受控 registry 声明允许的 exact image/version；Scenario/AI/Builder 不能传任意 image。
+- 使用安全字符串比较；
+- 缺失/错误返回 401；
+- 日志不记录完整 key；
+- 错误响应不回显 key；
+- `.env` 不提交 Git；
+- `.env.example` 只放占位符；
+- 默认 bind `127.0.0.1`。
+
+`GET /health` 可以无认证。
+
+FastAPI `/docs` 是否需要认证可以按实现成本选择，但必须文档说明；本地默认下不因此建设复杂中间件体系。
 
 ---
 
-## 3. Host Mount / Workspace
+## 3. 前端中的 API Key
 
-Scenario 不可声明任意 host path（`/`, `/etc`, `/var/run/docker.sock`, user home 等）。
+前端可以让用户录入 Key，随后附加到请求头。
 
-Agent 只挂载受控 run workspace：
+允许：
+
+- 内存；
+- sessionStorage。
+
+不允许：
+
+- 写入源码或构建产物；
+- 放在 URL query；
+- 发送到 AI；
+- 打印 Console；
+- 回显服务端环境变量真值；
+- 默认长期 localStorage 明文保存。
+
+---
+
+## 4. AI Provider 凭据
 
 ```text
-<isl-data>/runs/<run-id>/...
+ISL_AI_BASE_URL
+ISL_AI_API_KEY
+ISL_AI_MODEL
 ```
 
-Import/capture/archive 还要防 path traversal、symlink escape、archive bomb。
+要求：
+
+- 只在后端读取；
+- 不返回浏览器；
+- 不写普通日志；
+- provider 错误做简化和脱敏；
+- 请求有 timeout、输入长度和响应大小限制；
+- 测试使用 fake provider。
+
+AI 只返回 GenerationSpec，不获得数据库、文件系统、shell 或运行权限。
 
 ---
 
-## 4. Network 默认安全
+## 5. 输入安全
 
-- Source 在 per-run internal network；
-- 宿主访问默认 bind `127.0.0.1`；
-- 不默认 `0.0.0.0`；
-- LAN exposure 用户显式开启并看到风险；
-- Source credential 每 Run 生成；
-- 不使用生产 password/token。
+MVP 的外部输入：
 
----
-
-## 5. Outbound / Cloud Fail-closed
-
-Cloud SDK 等可能误访问真实系统。
+- prompt；
+- GenerationSpec JSON；
+- query parameters；
+- dataset name；
+- export format。
 
 必须：
 
-- fake credentials；
-- emulator endpoint override；
-- tests assert endpoint points to Lab；
-- missing/bad override fail closed；
-- AI 不可隐式加入 arbitrary external URL；
-- 后续可增加 Agent egress policy。
+- Pydantic 权威校验；
+- prompt/request 字节上限；
+- CI 类型 count 和总 count 上限；
+- 字符串长度上限；
+- custom field 数量/深度上限；
+- page_size 上限；
+- export format allowlist；
+- 稳定、有限的错误响应。
+
+首版不需要接受 YAML、压缩包、HAR、任意文件上传或 URL import，因此无需为这些未实现能力建设复杂清洗管道。
 
 ---
 
-## 6. Credentials
+## 6. 禁止任意执行
 
-### Lab-generated
-
-DB/SNMP/SSH/Redfish 等 test credential 仅当前 Run 使用。
-
-### External/capture
-
-- 不写 Scenario；
-- secret reference/env/secure config；
-- UI 不永久明文回显；
-- logs redaction；
-- AI context 不含 secret；
-- reveal/copy 要显式用户动作。
-
----
-
-## 7. Authoring / Compile / Run 权限层级
+GenerationSpec 不允许：
 
 ```text
-Unsaved Working Copy
-  ├─ Validate
-  ├─ Estimate
-  └─ AI Candidate
-        ↓ user Save
-Immutable Revision
-        ↓ user Compile
-Compile Manifest
-        ↓ user Start
-Run
+shell command
+Python/JavaScript
+Jinja expression
+Docker image
+host path
+SQL fragment
+arbitrary URL callback
+plugin package
 ```
 
-- unsaved validate/estimate 不需要 Scenario ID，也不产生运行权限；
-- authoritative Compile 只能引用 immutable Revision；
-- Start 只能引用成功 Compile Manifest；
-- AI/Builder 不能把未审查草稿直接送进 Docker runtime。
+Custom type 只允许有限、安全、JSON-compatible 字段生成规则。
 
 ---
 
-## 8. Scenario / YAML Parser 安全 — M0 起
+## 7. 数据库与事务
 
-`/api/authoring/validate` 在保存前就会解析用户/AI 内容，因此 parser 安全从 M0 就是 Gate。
+SQLite 文件放在受控数据目录。
 
-### Required
+要求：
 
-- 使用 safe YAML parser / safe loader；
-- 禁止 YAML custom object construction / Python object tags / arbitrary constructors；
-- 默认不接受未知/危险 tags；
-- parse 后只得到 JSON-compatible data model；
-- Pydantic/schema 是 authoritative shape validation；
-- 明确 source size limit；
-- 明确 nesting/depth limit 或等价防御；
-- 明确 mapping/sequence/item-count limits 或等价 resource guard；
-- 防 alias/anchor amplification（billion-laughs-like expansion）；
-- 对极端字符串/key 数量有 bounded handling；
-- parse/validation timeout/cancellation/resource failure 返回稳定 error，不拖垮 Control。
+- 不把 API/AI key 写入 dataset；
+- dataset 删除只删除对应 records/relations；
+- 生成失败不留下伪成功数据集；
+- relation foreign reference 在发布前校验；
+- SQLAlchemy 参数化查询；
+- API 不暴露任意 SQL/JSON path 查询。
 
-### Suggested resource settings
+本地工具不需要数据库加密集群、HA 或复杂备份系统。文档说明用户可备份 SQLite 文件即可。
 
-具体默认值应通过实现/测试选择，但配置模型至少预留类似：
+---
+
+## 8. 导出安全
+
+- 文件名由 dataset ID/安全 slug 生成；
+- format allowlist；
+- 不接受任意输出路径；
+- 临时文件放受控目录并清理；
+- CSV/XLSX 对以 `=`, `+`, `-`, `@` 开头的用户可控单元格考虑公式注入转义；
+- 导出不包含 API Key 或 AI Key。
+
+---
+
+## 9. 网络
+
+默认：
 
 ```text
-max_scenario_source_bytes
-max_scenario_depth
-max_scenario_collection_items
-max_scenario_alias_expansion / parser-safe equivalent
-max_authoring_request_bytes
+127.0.0.1
 ```
 
-不要为了避免 DoS 完全禁止 YAML anchor；如果安全 parser 可以有界支持，则 capability/limit 文档化。重点是**不能无限扩张**。
+用户显式改成 `0.0.0.0` 时，文档提示：
 
-### Tests
+- 必须使用强 API Key；
+- 最好放在受控网络或反向代理后；
+- MVP 不承诺公网多用户安全。
 
-至少：
-
-- unsafe object tag rejected；
-- oversized source rejected；
-- excessive nesting rejected/bounded；
-- alias amplification rejected/bounded；
-- huge collection rejected/bounded；
-- valid ordinary YAML unaffected。
+不需要 Docker socket、privileged container、host network 或远程 Agent。
 
 ---
 
-## 9. Working Copy / AI Staleness
+## 10. 日志
 
-```text
-source_digest   = raw source hash
-semantic_digest = canonical normalized document hash
-```
+可以记录：
 
-AI Candidate 携带 `base_semantic_digest`。Apply 前必须等于 current semantic digest；否则禁止 blind overwrite。
+- endpoint；
+- dataset ID；
+- count；
+- duration；
+- provider status/error category。
 
-M1 提供最小 stale blocking；M5 扩展 frozen snapshot / 3-way rebase。
+不要记录：
 
----
-
-## 10. AI 输入与权限
-
-AI 默认只获得 current Working Copy、user prompt、Scenario schema、Driver capability summary、resource policy、bounded diagnostics，以及 M5 后用户显式 sanitized context/attachment。
-
-默认不得获得：Docker socket/internal details、host filesystem、secrets、raw capture、arbitrary env、hidden reasoning。
-
-AI 不自动：
-
-- Save Revision；
-- authoritative Compile；
-- Start/Stop/Delete Run；
-- Timeline Step；
-- destructive Fault；
-- Driver install / arbitrary image；
-- shell/Docker；
-- read secret。
-
-Provider 未配置/故障不阻塞 Builder/Expert YAML/validate/estimate/save/compile/run。
-
-Provider key server-side only。
+- Bearer token；
+- AI API Key；
+- 完整 prompt（默认）；
+- 完整大数据集；
+- Authorization header；
+- browser session key。
 
 ---
 
-## 11. Prompt Injection / Import
+## 11. 依赖与许可证
 
-OpenAPI/HAR/log/text/YANG/capture 都是不可信数据：
+InfraSourceLab 自有代码采用根目录 **Apache License 2.0**。
 
-- attachment/import 是 data/context，不是 system instruction；
-- 内容不能扩大 tool permission；
-- raw capture 不默认进 AI；
-- token/header/cookie redaction；
-- sanitization preview/accept；
-- size/count/depth/recursion limits；
-- archive path/symlink/bomb defense；
-- URL import（若有）防 SSRF/private-network abuse。
+第三方依赖：
 
-通用 Importer/Attachment 从 M5 正式成为产品平台能力；M4A/M4B Driver-specific YANG/replay ingest 不等于通用 Importer。
+- 使用正常包管理 lockfile；
+- 记录主要依赖版本；
+- 不复制未知许可证源码；
+- shadcn/ui 组件按其正常使用方式进入项目；
+- Mimesis/Faker、xlsx 库、assistant-ui 等在实施时核对当前许可证。
 
----
-
-## 12. Frontend / Browser Tool 安全
-
-UI Skills / Chrome DevTools MCP 是开发工具，不进入 runtime。
-
-Chrome DevTools MCP 能读取页面/Console/Network：
-
-- 开发浏览器只用 test/fake credentials；
-- 不加载真实生产 secret 再交给 Agent；
-- screenshot/evidence 不含 token/password；
-- Playwright 使用 test data；
-- MCP 不可用不能用 `npm build` 替代真实 browser/security Gate。
+首版不需要建立大型 SBOM/供应链平台；基础依赖扫描和许可证检查放入 CI 即可。
 
 ---
 
-## 13. Scenario 执行安全
+## 12. 不建设的安全系统
 
-`v1alpha1` 禁止：
+MVP 明确不做：
 
-- arbitrary shell；
-- arbitrary Python/JS/Jinja execution；
-- arbitrary Docker image；
-- arbitrary host mount；
-- arbitrary privileged/host network。
+- 用户注册/登录；
+- RBAC；
+- OAuth/OIDC/SSO；
+- API Key 数据库和权限 Scope；
+- mTLS Agent；
+- Docker sandbox；
+- 多租户隔离；
+- 审批工作流；
+- 企业审计平台；
+- WAF/公网防护方案。
 
-Projection 使用 allowlisted pure transforms（或未来受控表达式子集）。
-
-AI/Builder/Expert YAML 经过同一 validation/security pipeline，没有 UI 特权通道。
-
----
-
-## 14. Resource Limits
-
-Authoring Estimate / Compile Preview 至少估算 node/edge/source/container/ports/disk/memory hints。
-
-平台配置至少覆盖：
-
-```text
-max_scenario_source_bytes
-max_authoring_request_bytes
-max_truth_nodes
-max_truth_edges
-max_sources_per_run
-max_containers_per_run
-max_artifact_bytes
-max_capture_bytes
-max_observation_bytes
-max_concurrent_runs
-max_published_ports
-```
-
-M6 再完善 Truth-version retention/resource admission。超过 hard limit 禁止 Compile/Start；AI/Builder 不能绕过。
+如果未来部署模式变化，再按真实威胁模型新增 focused Issue。
 
 ---
 
-## 15. Compile Base / Run 隔离
+## 13. MVP Security Gate
 
-```text
-Compile Base V0 immutable
-  ├─────────────┐
-  ↓             ↓
-Run A           Run B
-own Truth       own Truth
-own Source      own Source
-own faults      own faults
-```
+Review 时只需重点证明：
 
-Security/Correctness tests 必须防：
+1. 无 Key 的数据接口返回 401；
+2. 正确 Key 可调用；
+3. Key 不出现在日志、URL、导出和 AI 请求；
+4. AI Key 只在后端；
+5. Spec/count/page/request 有上限；
+6. 无任意执行字段；
+7. SQLite 操作和删除不越界；
+8. 导出路径/格式安全；
+9. 默认只监听 localhost；
+10. 不出现 Docker socket/privileged runtime。
 
-- cross-run native data leakage；
-- Run A fault affecting B；
-- runtime action mutating Compile Base；
-- cleanup A deleting B resources；
-- recovery assigning A version/state to B。
-
----
-
-## 16. Third-party Version / Capability Security
-
-```text
-exact pinned backend version/image
-      ↓
-actual integration test
-      ↓
-Driver/Fault capability registry
-```
-
-不能因为 upstream `main`/README 有功能就让 UI/Compiler 宣称支持。升级版本重跑 compatibility/security tests。
-
----
-
-## 17. Supply Chain
-
-每默认 Driver 记录：source URL、version/image/digest where appropriate、license、architecture、redistribution notes、verified capabilities。
-
-CI/Release 做 dependency/license/image scan；提交 lockfiles；不使用来源不明/长期不维护镜像作为默认；不以 `latest` 作为可复现运行条件。
-
----
-
-## 18. 项目许可证
-
-本仓库使用 **Apache License 2.0**，根目录 `LICENSE` 为项目许可证。
-
-第三方工具/容器遵循各自许可证。
-
-- Library/copied code：确认兼容并保留 attribution/NOTICE；
-- External process/container：仍记录 version/license/source/redistribution；
-- User-provided system/image：ISL 不分发受限内容。
-
-正式 Driver 引入时重新核验目标版本 LICENSE。
-
----
-
-## 19. Vendor Models / MIB / YANG / Images
-
-- vendor MIB/YANG 不默认分发；
-- standard model 也保留适用声明；
-- vendor NOS image 用户合法提供；
-- simulator 开源不等于全部模型/镜像可再分发。
-
----
-
-## 20. Capture / Replay
-
-Raw capture 可能含 token/cookie/private URL/hostname/IP/serial/customer data。
-
-```text
-var/captures/raw/       # gitignored
-var/captures/sanitized/ # reviewed artifact
-```
-
-```text
-raw → detect/sanitize → validation report → user preview → sanitized replay/import
-```
-
-未经 sanitize 不自动进入 Git/AI/public artifact。
-
----
-
-## 21. Logging / Redaction
-
-- no plaintext password/token；
-- redact Authorization/Cookie/X-API-Key；
-- AI request 不完整 dump；
-- attachment body 不 log；
-- Agent env only allowlisted diagnostics；
-- findings bounded expected/actual；
-- browser evidence no secret。
-
----
-
-## 22. Cleanup
-
-只删除：
-
-```text
-io.infrasourcelab.managed=true
-AND io.infrasourcelab.run=<target>
-```
-
-禁止 `docker system prune` 作为产品 cleanup。
-
----
-
-## 23. 每 Wave Security Gate
-
-至少检查：
-
-1. 新 Docker/host 权限？
-2. arbitrary input → executable input？
-3. Scenario/YAML parser limits 是否安全？
-4. 新 secret surface？
-5. raw capture/attachment？
-6. bind 0.0.0.0？
-7. 新第三方 image/library exact version/license/capability？
-8. cleanup 越界？
-9. AI 获得新写/执行能力？
-10. failure path 泄密？
-11. traversal/SSRF/archive bomb？
-12. browser evidence 含 secret？
-13. Compile/Run 绕过 immutable gate？
-14. stale Candidate 覆盖新 Working Copy？
-15. cross-run Truth/Source/native/fault leakage？
-16. runtime 修改 Compile Base？
-
-这些变化不能只按普通 CRUD Review。
+通过这十项即可，不因“未来可能公网化”阻塞本地 MVP。
