@@ -1,437 +1,453 @@
-# Scenario DSL 与 Truth Graph 模型
+# GenerationSpec 与数据模型
 
-## 1. Scenario 的定位
+> 文件名保留为 `scenario-model.md`，但首版不再建设复杂 Scenario DSL。唯一目标是定义 AI 和生成器之间的小型结构化合同。
 
-Scenario 是 InfraSourceLab 的版本化领域源码，但不是普通用户必须手写的入口。
+## 1. 为什么需要 GenerationSpec
 
-```text
-AI Create ────────┐
-Visual Builder ───┼──→ Scenario Working Copy
-Expert YAML ──────┘          │
-                             ├─ Validate
-                             ├─ Estimate
-                             └─ semantic_digest
-                             ↓
-                         User Save
-                             ↓
-                     Immutable Revision
-                             ↓
-                           Compile
-```
+不能让大模型直接生成数千条 CI：
 
-YAML 是 canonical human-readable serialization / Expert representation；内部解析为 JSON-compatible typed model。
+- 慢；
+- 费用高；
+- 容易漏关系和重复 ID；
+- 难以重复生成；
+- 很难严格校验。
 
----
-
-## 2. Working Copy、Raw YAML、Normalized Document
+正确流程：
 
 ```text
-Raw YAML/source text
-       ↓ parse
-Normalized typed document
-       ↑        ↑
-    Builder    AI Candidate
+自然语言
+  ↓ AI
+GenerationSpec
+  ↓ local deterministic generator
+CI Records + Relations
 ```
 
-Normalized typed document 是语义真值；Raw YAML 是人类可读原文与 provenance artifact。
-
-Builder 可以规范化 formatting/comments/key-order，不承诺逐字符 round-trip；必须承诺合法 advanced semantic fields 不被静默删除/改值。
+普通用户主要通过 AI 或简单表单创建规格，不需要手写 JSON/YAML。
 
 ---
 
-## 3. Digest 模型
+## 2. 最小结构
+
+建议 JSON 结构：
+
+```json
+{
+  "name": "medium-enterprise",
+  "description": "Two data centers with compute and applications",
+  "seed": 20260825,
+  "ci_types": [
+    {
+      "type": "data_center",
+      "count": 2
+    },
+    {
+      "type": "rack",
+      "count": 30
+    },
+    {
+      "type": "physical_server",
+      "count": 200,
+      "overrides": {
+        "environment_weights": {
+          "production": 70,
+          "test": 20,
+          "development": 10
+        }
+      }
+    },
+    {
+      "type": "virtual_machine",
+      "count": 800
+    },
+    {
+      "type": "application",
+      "count": 80
+    }
+  ],
+  "relations": [
+    {
+      "type": "contains",
+      "from_type": "data_center",
+      "to_type": "rack",
+      "strategy": "balanced"
+    },
+    {
+      "type": "mounted_in",
+      "from_type": "physical_server",
+      "to_type": "rack",
+      "strategy": "balanced"
+    },
+    {
+      "type": "runs_on",
+      "from_type": "virtual_machine",
+      "to_type": "physical_server",
+      "strategy": "balanced"
+    }
+  ]
+}
+```
+
+---
+
+## 3. 顶层字段
+
+| 字段 | 必填 | 说明 |
+|---|---:|---|
+| `name` | 是 | 数据集名称 |
+| `description` | 否 | 简短说明 |
+| `seed` | 是 | 确定性生成种子 |
+| `ci_types` | 是 | 需要生成的 CI 类型和数量 |
+| `relations` | 否 | 类型间关系规则 |
+| `metadata` | 否 | 非执行性的备注信息 |
+
+不加入：
 
 ```text
-source_digest   = raw source/YAML text hash
-semantic_digest = canonical normalized typed document hash
-```
-
-- source_digest：原文 provenance；
-- semantic_digest：AI base/stale、Builder/YAML semantic sync、Compile input identity。
-
-Canonical serialization 必须 deterministic，并记录 schema/normalization version。非语义系统字段（如数据库 created_at）不进入 semantic digest。
-
----
-
-## 4. AI Candidate Staleness
-
-Candidate：
-
-```text
-base_semantic_digest
-candidate semantic document
-candidate_semantic_digest
-```
-
-Apply 前必须比较 current semantic digest；不一致时 M1 起禁止 blind Apply。M5 再增加 frozen snapshot / 3-way compare / rebase。
-
----
-
-## 5. 顶层结构
-
-```yaml
-apiVersion: infrasourcelab.io/v1alpha1
-kind: Scenario
-metadata:
-  name: cmdb-medium-enterprise
-  description: DLR + CMDB integration lab
-
-seed: 20260824
-
-clock:
-  mode: manual
-  start: 2026-01-01T00:00:00Z
-
-world:
-  # canonical entities / generation rules
-
-sources:
-  # source projections + drivers
-
-timeline:
-  # run-scoped deterministic changes
-
-faults:
-  # run-scoped transport/application faults
-
-expectations:
-  # optional verification hints
-```
-
-Unknown `apiVersion` not silently accepted；schema migration explicit；Revision stores raw/normalized/source_digest/semantic_digest/schema+normalization version。
-
----
-
-## 6. Builder Compatibility
-
-Builder covers high-frequency 80% semantics and patches known typed paths：
-
-```text
-parse → typed document
-       ↓
-patch known paths
-       ↓
-preserve untouched valid advanced fields
-       ↓
-validate/serialize
-```
-
-有 advanced config 时 UI 提示；Builder 不重建一份“只含自己认识字段”的 Scenario。
-
----
-
-## 7. World：领域语义，不描述接口
-
-```yaml
-world:
-  sites:
-    - id: shanghai-dc
-      name: Shanghai DC
-    - id: suzhou-dc
-      name: Suzhou DC
-
-  physicalServers:
-    generate:
-      count: 300
-      template:
-        id: server-{index:04d}
-        hostname: srv-{index:04d}
-        serial:
-          pattern: CZ{index:08d}
-        managementIp:
-          allocateFrom: mgmt-pool
-        rackRef:
-          distributeOver: racks
-```
-
-SNMP `sysName.0`、Redfish `SerialNumber` 等属于 Source Projection，不属于 World。
-
----
-
-## 8. Truth Graph
-
-```text
-TruthNode(id, kind, attributes, tags)
-TruthEdge(id, type, from, to, attributes)
-```
-
-Scenario 可提供 strong-typed convenience sections；Compiler 最终降为 graph。
-
----
-
-## 9. Compile Base Truth 与 Run Truth
-
-Compile immutable Revision：
-
-```text
-Compile C12
-Base Truth V0
-Base Source Projections
-Compile Manifest
-```
-
-每次 Start Run 后独立 evolution：
-
-```text
-Compile C12 / Base V0
-      ├───────────────────┐
-      ↓                   ↓
-Run A                     Run B
-V0 → V1 → V2              V0 → V1
-```
-
-- Timeline modifies target Run only；
-- Run A not affect B；
-- Run not mutate Compile Base；
-- Source freshness/faults run-scoped；
-- historical Run Truth Version can be verification baseline。
-
-Scenario `timeline` 描述每个 Run 可执行/重放的计划，不在 Compile 阶段直接修改 Base V0。
-
----
-
-## 10. Stable ID / Seed
-
-Generated identity from scenario namespace + resource path + deterministic index。必要 UUID 用 UUIDv5/deterministic hash。
-
-Compile Manifest records schema/normalization/compiler/generator versions + semantic digest。AI 可以非确定，但保存 Revision 后 deterministic boundary 生效。
-
----
-
-## 11. IP Allocator
-
-```yaml
-world:
-  addressPools:
-    mgmt-pool:
-      cidr: 10.20.0.0/20
-      reserved: [10.20.0.1]
-```
-
-Compiler checks overlap/capacity/duplicates/reserved/format；Driver 不自行随机 canonical IP。
-
----
-
-## 12. Source Projection
-
-```yaml
-sources:
-  - name: redfish-bmc
-    driver: redfish
-    select:
-      kinds: [physical_server]
-    projection:
-      identity:
-        sourceId: "bmc-{node.id}"
-      fields:
-        SerialNumber: "attributes.serial"
-        HostName: "attributes.hostname"
-```
-
-Pure transforms：map/rename、case、prefix/suffix/format、omit、constant、enum map、split/join、deterministic hash、relation flatten/reference。No arbitrary Python/JS/Jinja。
-
----
-
-## 13. Semantic Defects
-
-```text
-missing-field
-duplicate-record
-wrong-value
-stale-field
-case-drift
-format-drift
-identity-alias
-identity-collision
-wrong-relation
-missing-relation
-extra-relation
-orphan-record
-```
-
-Percentage selector uses deterministic hash `(seed,node_id,defect_id)`。
-
-Compile creates Base Projection definition；Run Source Projection Version may evolve from Truth/freshness in M2。
-
----
-
-## 14. Driver Config
-
-```yaml
-sources:
-  - name: vc-a
-    driver: vcsim
-    driverConfig:
-      apiMode: vcenter
-      tls: true
-```
-
-Driver-specific config gets second schema/capability validation。普通 UI uses capability-aware controls；raw config Advanced/Expert。
-
----
-
-## 15. Transport / Protocol metadata
-
-Source/Driver capability must be able to express actual transport/protocol, e.g.：
-
-```text
-HTTP API → TCP
-PostgreSQL → TCP
-SSH/SFTP → TCP
-SNMP v2c default → UDP
-```
-
-Fault availability = Source transport + Driver capability + FaultBackend capability。Toxiproxy is TCP-only; default SNMP/UDP must not falsely inherit TCP faults。
-
----
-
-## 16. Clock / Timeline
-
-MVP manual clock：
-
-```yaml
-timeline:
-  - id: migrate-vm-7
-    at: +10m
-    actions:
-      - type: relink_edge
-        entity: vm-0007
-        edgeType: runs_on
-        to: esxi-02
-```
-
-Run execution：Run V0 → Step → Run V1 → Source refresh policy。
-
----
-
-## 17. Source Refresh / Staleness
-
-```yaml
-sources:
-  - name: excel-export
-    refresh:
-      mode: every-steps
-      steps: 3
-```
-
-Runtime records run_id, current canonical version, source projected version, runtime projection version, stale_by_steps。Same Source definition can have different freshness in Run A/B。
-
----
-
-## 18. Faults vs Defects
-
-Semantic Defect changes data；Transport Fault changes transport；Protocol/Application Fault changes protocol behavior。
-
-```yaml
-faults:
-  - id: vc-latency
-    target: vc-a
-    layer: transport
-    type: latency
-    params:
-      latencyMs: 1500
-```
-
-Fault capability must match actual transport/backend/pin version. UDP network fault is unavailable until a dedicated backend is explicitly implemented。
-
----
-
-## 19. Compile Manifest — deterministic, no Run ephemera
-
-Authoritative Compile only from immutable Revision。
-
-Example logical contents：
-
-```yaml
-scenarioRevision: 12
-sourceDigest: sha256:...
-semanticDigest: sha256:...
-schemaVersion: v1alpha1
-normalizationVersion: 0.1.0
-compilerVersion: 0.1.0
-seed: 20260824
-baseTruth:
-  version: 0
-  nodeCount: 5120
-  edgeCount: 12841
-  digest: sha256:...
-sources:
-  - name: vc-a
-    driver: vcsim
-    driverVersion: ...
-    backendVersion: ...
-    projectionDigest: sha256:...
-    planDigest: sha256:...
-generators:
-  mimesis: ...
-```
-
-### Compile Manifest MUST NOT contain
-
-```text
-run_id
-host published port
-container/network/volume ID/name
-per-Run random credential/token/community/key
+Docker image
+shell command
+host mount
+workflow DAG
+timeline
+fault
 runtime endpoint
-runtime-only native IDs generated after start
-active runtime faults
-current Run Truth Version
 ```
-
-Deterministic artifact/Driver Plan may include internal service-port requirements and content-addressed config templates, but no runtime secret/state。
 
 ---
 
-## 20. Run Manifest / RunSource materialization
+## 4. CITypeSpec
 
-Run starts from Compile plan and records per-Run ephemera：
+```json
+{
+  "type": "physical_server",
+  "count": 200,
+  "overrides": {}
+}
+```
+
+规则：
+
+- `type` 必须是内置类型或合法 custom type；
+- `count >= 0`；
+- 每类型和总数量有可配置上限；
+- `overrides` 只接受该模板明确支持的简单参数；
+- 未知 override 返回诊断，不静默忽略。
+
+### 内置类型
 
 ```text
-run_id
-Agent assignment
-container/network/volume names/IDs
-host published ports
-runtime endpoint
-per-Run generated credential / secret reference
-runtime native IDs / identity map
-current Truth Version
-current Source Projection Version
-active faults
-health/status
+data_center
+rack
+physical_server
+virtual_machine
+network_device
+ip_address
+application
+database
+middleware
+kubernetes_cluster
+kubernetes_node
+kubernetes_workload
 ```
 
-Same Compile can therefore create multiple isolated Runs without port/credential collisions or changing Compile digest。
+---
 
-Runtime secrets are not dumped into ordinary user-visible manifest/logs。
+## 5. 内置字段建议
+
+## 通用字段
+
+```text
+name
+status
+environment
+owner
+description
+tags
+created_at_like_test_value
+```
+
+时间字段是生成的业务测试值，不使用真实系统创建时间来影响确定性。
+
+## physical_server
+
+```text
+hostname
+serial_number
+vendor
+model
+cpu_cores
+memory_gib
+management_ip
+os_name
+os_version
+```
+
+## virtual_machine
+
+```text
+hostname
+uuid
+cpu_cores
+memory_gib
+ip_address
+power_state
+os_name
+```
+
+## network_device
+
+```text
+hostname
+serial_number
+vendor
+model
+device_role
+management_ip
+software_version
+```
+
+## application
+
+```text
+code
+name
+owner
+environment
+criticality
+lifecycle_status
+```
+
+## database
+
+```text
+name
+engine
+version
+host
+port
+environment
+```
+
+## middleware
+
+```text
+name
+type
+version
+host
+port
+environment
+```
+
+## Kubernetes
+
+只提供配置数据需要的简单字段，不复制完整 Kubernetes API 对象。
 
 ---
 
-## 21. Diagnostics
+## 6. Custom type
 
-Unified error/warning/info with code/path/message/hint。Errors block authoritative Compile/Start。
+简单 custom type 示例：
 
-Typical：invalid schema、unsafe YAML/input limits、duplicate ID、broken ref、impossible relation、IP exhausted、driver unavailable、transport/fault mismatch、resource limit。
+```json
+{
+  "type": "custom",
+  "name": "storage_array",
+  "count": 10,
+  "fields": {
+    "vendor": {"kind": "choice", "values": ["A", "B"]},
+    "capacity_tib": {"kind": "integer", "min": 50, "max": 500},
+    "serial_number": {"kind": "pattern", "value": "ST-{index:05d}"}
+  }
+}
+```
+
+首版只支持有限字段生成器：
+
+```text
+constant
+pattern
+choice
+integer
+boolean
+ipv4
+hostname
+uuid
+```
+
+禁止任意 Python、JavaScript、Jinja 或表达式执行。
+
+如果 custom type 会明显拖慢 MVP，可以先实现内置类型并把 custom type 标为后续小增强，但不得为它建设插件系统。
 
 ---
 
-## 22. Scale
+## 7. RelationSpec
 
-Use generate/count/templates/distributions/deterministic allocator/batch persistence/streaming artifacts。Authoring Estimate works before save/Compile。
+```json
+{
+  "type": "runs_on",
+  "from_type": "virtual_machine",
+  "to_type": "physical_server",
+  "strategy": "balanced"
+}
+```
 
-Run Truth can use snapshot+delta/materialization to avoid full 100k copy each Step while preserving historical version/query semantics and Run isolation。
+### 核心关系类型
+
+```text
+contains
+mounted_in
+runs_on
+hosted_on
+belongs_to
+depends_on
+uses
+has_ip
+```
+
+### 简单策略
+
+```text
+balanced          尽量平均分配
+round_robin       按顺序轮转
+random_seeded     基于 seed 的随机连接
+one_to_many       一个 from 对多个 to，数量由简单参数控制
+```
+
+不要建立通用图规则语言。
+
+### 关系校验
+
+- from/to 类型必须存在；
+- 目标 count 为 0 时拒绝不可能关系；
+- from_id/to_id 必须引用当前数据集记录；
+- relation ID 稳定；
+- 默认不生成自环，除非关系明确允许；
+- 同一规则是否允许重复边要明确。
 
 ---
 
-## 23. `v1alpha1` 暂不支持
+## 8. 确定性
 
-- arbitrary Python/JS/Jinja；
-- arbitrary Docker image；
-- request-time LLM Source responses；
-- arbitrary DAG/workflow；
-- distributed Truth Graph；
-- graph query language；
-- guaranteed comment/format preservation；
-- implicit UDP privileged network-fault backend。
+同一：
 
-优先可审计、确定、安全、Run isolated。
+```text
+normalized GenerationSpec
++ seed
++ generator version
+```
+
+必须产生相同：
+
+- CI ID；
+- 主要字段值；
+- 关系端点；
+- 排序和导出内容（不含导出时间等非确定 metadata）。
+
+推荐 ID：
+
+```text
+dc-0001
+rack-0001
+server-0001
+vm-0001
+app-0001
+relation-000001
+```
+
+不使用随机 UUID 作为唯一可复现 ID；需要 UUID 字段时使用 seed/namespace 派生。
+
+---
+
+## 9. AI 输出合同
+
+AI Response 最好包含：
+
+```json
+{
+  "message": "我将生成……",
+  "spec": {},
+  "warnings": []
+}
+```
+
+服务端必须重新：
+
+```text
+parse
+→ Pydantic/schema validation
+→ count limit
+→ type validation
+→ relation validation
+→ normalized spec
+```
+
+模型声称“有效”不代表有效。
+
+但校验保持针对当前风险，不建设复杂审批、Revision 或三方合并系统。
+
+---
+
+## 10. 数据记录格式
+
+### CI
+
+```json
+{
+  "id": "server-0001",
+  "type": "physical_server",
+  "name": "srv-0001",
+  "attributes": {
+    "serial_number": "SN00000001",
+    "vendor": "ExampleVendor",
+    "management_ip": "10.10.0.1"
+  },
+  "tags": {
+    "environment": "production"
+  }
+}
+```
+
+### Relation
+
+```json
+{
+  "id": "relation-000001",
+  "type": "mounted_in",
+  "from_id": "server-0001",
+  "to_id": "rack-0004",
+  "attributes": {}
+}
+```
+
+API、数据库和导出围绕这两个简单模型工作。
+
+---
+
+## 11. 第二阶段数据质量
+
+Issue #2 可增加四种简单 deterministic defect：
+
+```text
+missing_field
+case_drift
+duplicate_record
+wrong_value
+```
+
+MVP #1 不因这些能力延迟交付。
+
+---
+
+## 12. 明确不进入模型
+
+- canonical Truth 与 Source Projection 双层世界；
+- Truth Version；
+- Compile/Run Manifest；
+- Timeline/Fault；
+- Protocol Driver config；
+- Observation/Verifier；
+- arbitrary scripts；
+- runtime containers/endpoints；
+- multi-tenant ownership。
+
+GenerationSpec 是“生成一份数据集”的小合同，不是基础设施描述语言。
