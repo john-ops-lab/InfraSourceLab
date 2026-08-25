@@ -1,163 +1,57 @@
 # 重点项目源码拆解与设计借鉴
 
-> 本文不是功能介绍，而是记录：我们从哪些成熟项目的源码/架构中抽取什么设计，同时明确哪些东西不复制。
+> 本文记录我们从成熟项目抽取什么架构模式、哪些东西直接复用、哪些东西不复制。它是**设计研究**，不是正式 Driver capability 清单。正式能力以 InfraSourceLab pin 的 backend 版本 + integration test 为准。
 
-## 1. Microcks：契约导入 → 统一模型 → 示例生成
+## 1. Microcks：Importer Registry + 统一模型 + 结构化 AI
 
-Repo: https://github.com/microcks/microcks
+Repo: `microcks/microcks`
 
-### 1.1 值得借鉴的架构
-
-Microcks 当前整体是：
-
-```text
-Spring Boot Core
-+ Angular UI
-+ MongoDB
-+ Keycloak
-+ Async Minions
-+ CLI / Operator / Testcontainers integrations
-```
-
-对 ISL 来说它太重，但其“导入器 + 统一 domain model”非常值得借鉴。
-
-### 1.2 `MockRepositoryImporterFactory`
-
-源码：
-
-`webapp/src/main/java/io/github/microcks/util/MockRepositoryImporterFactory.java`
-
-它根据输入文档标记选择 importer：
-
-- Postman；
-- OpenAPI 3；
-- Swagger；
-- AsyncAPI 2/3；
-- Protobuf/gRPC；
-- GraphQL；
-- SoapUI；
-- HAR；
-- Microcks Metadata/Examples。
-
-### 对 ISL 的借鉴
-
-不要让所有 import 逻辑塞进 Scenario API：
+值得借鉴：
 
 ```text
 Input Artifact
      ↓
 Importer Registry
      ↓
-Intermediate Import Model
+Intermediate Model
      ↓
 Scenario Candidate
      ↓
-Validation + Diff + Apply
+Validation / Review / Apply
 ```
 
-例如未来：
+Microcks 的 importer 体系覆盖 OpenAPI/Swagger/AsyncAPI/Postman/Protobuf/GraphQL/SOAP/HAR 等，说明 Import 不应塞成 Scenario API 里的巨大 if/else。
+
+AI 方面值得借鉴的是：
+
+- prompt 约束输出结构；
+- schema-aware examples；
+- LLM 输出再次 parse 到正式 domain model；
+- 自由文本不能直接成为运行配置。
+
+ISL 对应：
 
 ```text
-OpenAPI          → HttpSource Candidate
-HAR              → ReplaySource Candidate
-Postman          → HttpSource Candidate
-snmpwalk/snmprec → SnmpSource Candidate
-YANG             → NetconfSource Candidate
-Redfish mockup   → RedfishSource Candidate
-CSV/xlsx         → ArtifactSource Candidate
-```
-
-### 1.3 `AICopilotHelper`
-
-源码：
-
-`webapp/src/main/java/io/github/microcks/util/ai/AICopilotHelper.java`
-
-关键思想不是“用了 AI”，而是：
-
-1. Prompt 明确要求 realistic + schema-valid；
-2. 每种协议有确定的输出格式；
-3. 强制 YAML structure；
-4. LLM output 再 parse 到正式 domain model；
-5. 不把自由文本直接当运行配置。
-
-### 对 ISL 的借鉴
-
-AI Scenario Assistant 的返回必须是：
-
-```text
-LLM text
+LLM output
   ↓ strict extraction
 ScenarioCandidate
-  ↓ JSON Schema
-  ↓ semantic validation
-  ↓ Driver capability validation
-Candidate Diff
+  ↓ schema/semantic/capability/security validation
+User review / Apply
 ```
 
-绝不允许：
-
-```text
-LLM → shell/docker command → execute
-```
-
-### 不复制的东西
-
-- Java/Spring Boot；
-- MongoDB；
-- Keycloak；
-- Microcks 的 API domain model；
-- Async Minion 实现。
-
-ISL 只复用设计模式，通过可选 Driver 使用 Microcks 本身。
+不复制：Spring Boot、MongoDB、Keycloak、Microcks domain model、Async Minion 实现。
 
 ---
 
-# 2. MockForge：Core / Protocol / Plugin / Feature 分层
+## 2. MockForge：Core / Driver / Plugin 分层
 
-Repo: https://github.com/SaaSy-Solutions/mockforge
+Repo: `SaaSy-Solutions/mockforge`
 
-MockForge 是目前调研中“产品理念最像万能模拟器”的项目之一，但成熟度不足以成为本项目长期底座。
-
-## 2.1 Cargo workspace 分层
-
-其 `ARCHITECTURE.md` 把 crates 分为：
-
-### Public core/protocol
-
-- `mockforge-core`；
-- `mockforge-http`；
-- `mockforge-ws`；
-- `mockforge-grpc`；
-- `mockforge-graphql`；
-- `mockforge-data`。
-
-### Plugin
-
-- `mockforge-plugin-core`；
-- `mockforge-plugin-sdk`；
-- `mockforge-plugin-loader`。
-
-### Internal features
-
-- CLI；
-- UI；
-- recorder；
-- observability；
-- tracing；
-- chaos；
-- reporting；
-- plugin registry。
-
-依赖规则明确要求向下依赖、协议独立、插件隔离。
-
-### 对 ISL 的借鉴
-
-Python 项目虽然不需要 Rust crates，但需要保持同样边界：
+值得借鉴：
 
 ```text
 Core Domain
-  ↑ no concrete driver dependency
+  ↑ no concrete backend dependency
 Driver Contract / Registry
   ↑
 Concrete Drivers
@@ -168,97 +62,33 @@ Agent Runtime
 不要出现：
 
 ```python
-# compiler.py
-if source.driver == "vcsim":
-    ...
-elif source.driver == "kwok":
-    ...
+if driver == "vcsim": ...
+elif driver == "kwok": ...
 ```
 
-具体 driver 选择通过 registry/capability dispatch。
+散落在 Compiler 中。
 
-## 2.2 `DataSourcePlugin` trait
+其 plugin/datasource trait 进一步验证：capability / validate / lifecycle / cleanup 应是正式契约。
 
-源码：
-
-`crates/mockforge-plugin-core/src/datasource.rs`
-
-接口包含：
-
-- capabilities；
-- initialize；
-- connect；
-- query；
-- get_schema；
-- test_connection；
-- validate_config；
-- supported_types；
-- cleanup。
-
-### 对 ISL 的借鉴
-
-我们的 Driver contract 同样必须把：
-
-```text
-capability
-validate
-render
-start
-health
-apply lifecycle action
-stop
-cleanup
-```
-
-作为正式协议，而不是每个 Driver 各写一套 service class。
-
-## 2.3 Plugin 安全
-
-MockForge 甚至引入 WASM sandbox/plugin loader。这提醒我们：插件扩展最终一定涉及安全边界。
-
-但 ISL 第一版不需要“第三方用户上传插件”。Driver 是仓库内受信代码 + allowlisted container。等生态真实出现再做外部 Plugin SDK。
-
-### 不复制
-
-- Rust 技术栈；
-- WASM plugin system；
-- 自己实现所有协议；
-- 大量超前功能。
+不复制：Rust 技术栈、WASM plugin system、自研多协议实现、超前 marketplace。
 
 ---
 
-# 3. govmomi/vcsim：用模型生成真实协议对象
+## 3. govmomi/vcsim：compact model → real protocol objects
 
-Repo: https://github.com/vmware/govmomi
+Repo: `vmware/govmomi`
 
-重点源码：
+重点价值：
 
-- `simulator/model.go`
-- `simulator/registry.go`
-- `vcsim/main.go`
+- count-based inventory；
+- Datacenter/Cluster/Host/VM/Datastore/Network 等真实 vSphere 对象语义；
+- registry/native identity；
+- deterministic-like fixture knobs；
+- delay/mutation 能力。
 
-## 3.1 `Model` 是优秀的 count-based fixture
+### 对 ISL 的借鉴
 
-`Model` 直接描述：
-
-- Datacenter count；
-- Portgroup；
-- Opaque Network；
-- standalone Host；
-- Cluster；
-- ClusterHost；
-- ResourcePool；
-- Datastore；
-- VirtualMachine；
-- Folder；
-- VirtualApp；
-- StoragePod。
-
-这说明真实模拟器也不要求输入一万条对象；可以从 compact model 物化 inventory。
-
-### 对 Scenario DSL 的借鉴
-
-我们也使用：
+大规模 Scenario 应描述：
 
 ```yaml
 generate:
@@ -266,330 +96,182 @@ generate:
   template: ...
 ```
 
-而不是 AI 展开 1500 个 VM YAML block。
+而不是 AI 展开 1500 个 VM block。
 
-## 3.2 Deterministic IP
-
-`Model` 当前支持 `HostIPBase`，按创建顺序给 HostSystem 管理地址递增分配。
-
-### 对 ISL 的借鉴
-
-所有地址/ID allocation 统一在 Compiler 完成，不交给各 backend 自己随机分配。
-
-## 3.3 DelayConfig
-
-源码有：
+统一 Compiler 分配 canonical ID/IP；Driver 保存：
 
 ```text
-Delay
-MethodDelay
-DelayJitter
+canonical_id ↔ MoRef/UUID/native path
 ```
 
-### 对 ISL 的借鉴
-
-故障能力应支持：
-
-```text
-global transport fault
-source-specific fault
-operation-specific fault
-```
-
-但网络层统一走 Toxiproxy；只有 backend 自己已有 method-level fault 时才利用。
-
-## 3.4 Registry / managed object identity
-
-vcsim 内部 registry 保存 managed objects/references。
-
-### 对 ISL 的借鉴
-
-每个 Driver 必须维护：
-
-```text
-canonical_id ↔ source_native_id
-```
-
-否则 Verification 无法解释“vm-0007 在 vCenter 里实际叫哪个 MoRef/UUID”。
+**实际 Driver 能调用哪些 mutation/delay 能力，以 ISL 最终 pin 的 govmomi 版本验证为准。**
 
 ---
 
-# 4. KWOK：状态阶段不是随机变化，而是声明式变化
+## 4. KWOK：声明式状态阶段
 
-Repo: https://github.com/kubernetes-sigs/kwok
+Repo: `kubernetes-sigs/kwok`
 
-重点：
+KWOK Stage 展示了 selector + delay/jitter + ordered patch/event/delete/apply 等声明式变化方式。
 
-`pkg/apis/v1alpha1/stage_types.go`
-
-## 4.1 StageSpec
-
-KWOK Stage 支持：
-
-- ResourceRef；
-- Selector；
-- Weight；
-- expression-based weight；
-- Delay/Jitter；
-- ordered Steps。
-
-Step 可以：
-
-- Patch；
-- Event；
-- Finalizer change；
-- Delete；
-- Apply。
-
-Selector 支持 labels/annotations 和 CEL/JQ expression。
-
-### 对 ISL 的借鉴
-
-ISL Timeline 也必须是**声明式、可重放的状态变化**：
+ISL 借鉴：
 
 ```text
-selector + action + deterministic ordering
+selector + typed action + deterministic ordering
 ```
 
-而不是写一个后台线程，每隔几秒随机改几个对象。
+而不是后台随机线程。
 
-## 4.2 为什么不直接采用 KWOK Stage DSL
-
-KWOK schema 深度绑定 Kubernetes Object、subresource、finalizer、server-side apply。
-
-ISL 需要 source-neutral：
-
-```text
-patch canonical attribute
-create entity
-delete entity
-relink edge
-set source freshness
-inject fault
-```
-
-K8s Driver 再把这些 action 翻译为 Stage/Kubernetes operations。
+但 KWOK Stage 深度绑定 Kubernetes object/subresource，所以 ISL Core Timeline 仍保持 source-neutral；K8s Driver 再翻译。
 
 ---
 
-# 5. snmpsim：动态数据与故障应当是模块化 variation
+## 5. snmpsim：Projection、Variation 与 Protocol Fault 分层
 
-Repo: https://github.com/etingof/snmpsim
+Repo: `etingof/snmpsim`
 
-重点文档/源码：
+snmpsim 证明 SNMP 不需要我们自己实现 PDU。
 
-`docs/source/documentation/simulation-with-variation-modules.rst`
+可借鉴能力类别：
 
-snmpsim 的 `.snmprec` 可以把某个 OID/subtree 交给 variation module。
+- recorded data；
+- `.snmprec`；
+- dynamic value variation；
+- delay/error；
+- time-series/multiplex；
+- trap/inform；
+- external-backed values。
 
-内置 variation 覆盖：
-
-- `numeric`：随时间变化的 counter/gauge；
-- `notification`：TRAP/INFORM；
-- `writecache`：SET 可写持久；
-- `sql`；
-- `redis`；
-- `delay`；
-- `error`；
-- `multiplex`：时间序列 snapshot；
-- `subprocess`。
-
-## 对 ISL 的借鉴
-
-### 动态变化与静态 Projection 分开
+ISL 模型保持：
 
 ```text
-Initial Projection
-   +
-Variation/Lifecycle Layer
+Initial Source Projection
+       +
+Lifecycle / Variation
+       +
+Protocol / Transport Fault
 ```
 
-### Fault taxonomy 分层
-
-snmpsim 已明确区分：
-
-- value variation；
-- delay；
-- protocol error；
-- notification。
-
-ISL 也不应该只有一个笼统 `chaos: true`。
-
-### Record → Replay
-
-snmpsim 能从真实 SNMP Agent 记录数据，这验证了 ISL “有真实环境时先 capture，再长期复用”的路线。
+具体 variation module 能力以正式 pin 版本测试为准。
 
 ---
 
-# 6. DMTF Redfish Interface Emulator：Static + Dynamic 双模式
+## 6. DMTF Redfish Interface Emulator：Static + Dynamic
 
-Repo: https://github.com/DMTF/Redfish-Interface-Emulator
+Repo: `DMTF/Redfish-Interface-Emulator`
 
-## 6.1 Static
+值得复用：
 
-把 Redfish mockup hierarchy 放到 static 目录即可提供 GET。
+- static mockup；
+- dynamic resource；
+- GET/PATCH/POST/DELETE；
+- populate/infragen 的 count/hierarchy 配置。
 
-适合只读 Adapter：
-
-```text
-mockup directory → endpoint
-```
-
-## 6.2 Dynamic
-
-每类 resource 可以用 template file + API file 实现 GET/PATCH/POST/DELETE。
-
-它还提供 code generator，说明复杂标准协议下“由 schema/mockup 生成实现骨架”比手写每个资源合理。
-
-## 6.3 `infragen/populate-config.json`
-
-配置能表达：
+这与 ISL 的：
 
 ```text
-5 Chassis
- → 每 Chassis 1 System
-   → 2 CPU
-   → 多种 Memory
-   → Storage
-   → NIC
+Truth hierarchy/edges
+ → Redfish Projection
+ → populate/resources
 ```
 
-### 对 ISL 的借鉴
+天然匹配。
 
-这和 Truth Graph 正好匹配：
-
-```text
-canonical hierarchy/edges
- → Redfish source projection
- → populate config/resources
-```
-
-同时说明 Scenario 的 count/template/reference 模型是合理的。
+不复制其协议 route 到 Core；通过 Driver 编排 backend。
 
 ---
 
-# 7. Mockoon：让配置格式成为 Driver 输出，不成为 Core 模型
+## 7. Mockoon：Backend config 是编译产物，不是 Scenario
 
-Repo: https://github.com/mockoon/mockoon
-
-Mockoon CLI 可以直接从：
-
-- Mockoon environment JSON；
-- OpenAPI YAML/JSON；
-
-启动 server，还支持 Faker seed、admin API、response rules、proxy、logs。
-
-### 对 ISL 的借鉴
-
-`environment.json` 是**编译产物**，不是 Scenario。
+Repo: `mockoon/mockoon`
 
 ```text
-Scenario Source
+Scenario
   ↓
 Projection
   ↓
-HttpSource Intermediate Model
+HttpSource intermediate model
   ↓
 Mockoon Renderer
   ↓
-environment.json
+environment config
 ```
 
-如果未来换成 WireMock，前两层无需变化。
+Mockoon config 不进入 public Scenario DSL。
+
+这样以后换 backend，Truth/Projection 不变。
 
 ---
 
-# 8. Toxiproxy：把网络故障从所有 Driver 中抽出去
+## 8. Toxiproxy：共享 Transport Fault Backend
 
-Repo: https://github.com/Shopify/toxiproxy
+Repo: `Shopify/toxiproxy`
 
-Toxiproxy 通过 HTTP API 管理 TCP proxy 和 toxics：
-
-- latency/jitter；
-- bandwidth；
-- timeout；
-- reset_peer；
-- packet_loss；
-- slow_close；
-- disable proxy；
-- limit_data/slicer。
-
-### 对 ISL 的关键架构意义
-
-不要写：
+架构价值：不要给每个 Driver 各写：
 
 ```text
-VcsimDriver.add_latency()
-PostgresDriver.add_latency()
-RedisDriver.add_latency()
-SnmpDriver.add_latency()
+add_latency
+add_timeout
+add_bandwidth
+...
 ```
 
 统一：
 
 ```text
+Test Client
+   ↓
+Toxiproxy published endpoint
+   ↓
 Source Backend
-      ↑
-  Toxiproxy
-      ↑
- Test Client
 ```
 
-Core Fault Controller 只操作 Toxiproxy；Driver 声明 endpoint 是否可 proxy。
+### 版本事实必须区分
 
----
+上游项目的 `main` 会变化；正式 ISL Driver 会 pin 某个 release/image。因此本文即使观察到 upstream source 中存在 latency、bandwidth、timeout、reset_peer、packet_loss、limit_data、slicer、slow_close 等实现，也**不能直接等价为 ISL 当前支持**。
 
-# 9. FakeNOS / scrapli-replay：Synthetic 与 Capture 两条网络 CLI 路线
-
-## FakeNOS
-
-Repo: https://github.com/fakenos/fakenos
-
-它证明网络 CLI 完全可以用轻量 SSH server 提供足够真实的 command prompt/response，而不用一上来启动厂商虚拟路由器。
-
-### 借鉴
-
-ISL 要提供“CLI profile”：
-
-```yaml
-profiles:
-  cisco-ios-basic-inventory:
-    commands:
-      show version: ...
-      show inventory: ...
-      show interfaces: ...
-```
-
-模板 body 来自 Truth Projection。
-
-## scrapli-replay
-
-Docs: https://scrapli.github.io/scrapli_replay/
-
-Collector 从真实设备采集 command/response，Server 再启动 semi-interactive SSH endpoint。
-
-### 借鉴
-
-ISL 后期 Capture Importer 应把：
+正式流程：
 
 ```text
-real session
- → sanitize
- → parameterize
- → replay profile
+pin version
+  ↓
+integration test each required toxic
+  ↓
+capability registry
 ```
 
-作为标准工作流，而不是只允许手写 simulator config。
+这样避免研究文档比实际发行版本“跑得更快”。
 
 ---
 
-# 10. Netopeer2 + sysrepo：标准协议优先使用标准服务实现
+## 9. FakeNOS / scrapli-replay：Synthetic 与 Capture 两条 CLI 路线
 
-Netopeer2: https://github.com/CESNET/netopeer2
+### FakeNOS
 
-sysrepo: https://github.com/sysrepo/sysrepo
+用于 synthetic CLI endpoint，适合 Truth-driven：
 
-它们提供：
+```text
+show version
+show inventory
+show interfaces
+show ip interface brief
+```
+
+### scrapli-replay
+
+用于真实授权设备的 capture → sanitize → replay。
+
+ISL 不需要在二者中二选一：
+
+```text
+Synthetic → FakeNOS
+Recorded  → scrapli-replay
+High fidelity → later user-provided NOS lab
+```
+
+---
+
+## 10. Netopeer2 + sysrepo：标准协议用标准服务
 
 ```text
 YANG model
@@ -598,96 +280,113 @@ sysrepo datastore
   ↓
 Netopeer2
   ↓
-real NETCONF SSH endpoint
+NETCONF SSH endpoint
 ```
 
-### 对 ISL 的借鉴
+ISL 只负责 Truth Projection → datastore，不实现 NETCONF framing/RPC/YANG engine。
 
-对于 schema-driven protocol：
+---
+
+## 11. Moto / Azurite / fake-gcs-server
+
+### Moto
+
+适合 standalone AWS mock endpoint；ISL 使用 SDK endpoint override 与 fake credentials。
+
+### Azurite
+
+只代表 Azure Storage，不是整个 Azure control plane。
+
+### fake-gcs-server
+
+只代表 GCS-compatible endpoint，不是整个 GCP。
+
+共同借鉴：**Simulator capability 应精确描述，不用一个产品名暗示整个平台都被模拟。**
+
+---
+
+## 12. Real Services：真服务比 fake wire protocol 更便宜
+
+PostgreSQL/MySQL/Redis/Kafka/RabbitMQ/MQTT/SFTP/LDAP 等：
 
 ```text
 Truth Projection
- → standard datastore
- → existing protocol server
+  ↓
+render seed/config
+  ↓
+real service
 ```
 
-往往是最佳路线。
+不要重新实现 wire protocol。
 
-这也说明未来 RESTCONF/gNMI 等不要本能地自己实现协议。
+可以共享 start/health/credentials/cleanup abstraction，但不要为了“统一”把所有协议业务操作都强制抽象成相同 CRUD。
 
 ---
 
-# 11. containerlab：Topology as Code 很好，但不是我们的 Core DSL
+## 13. NetBox：真实应用数据源
 
-Website: https://containerlab.dev/
-
-containerlab YAML 描述：
-
-- topology nodes；
-- node kind/image；
-- links；
-- management network/IP；
-- startup config。
-
-### 借鉴
-
-- lab-scoped resource naming；
-- declarative lifecycle；
-- node/link 图；
-- management network；
-- deterministic topology rendering。
-
-### 不直接采用它作为 Scenario
-
-ISL World 是“配置数据真实世界”，containerlab topology 是“需要运行的网络设备拓扑”。
-
-例如一个 CMDB 可以有 10000 台网络设备记录，但测试并不需要启动 10000 个 NOS container。
-
-因此：
+NetBox 本身就是成熟 Source of Truth，适合：
 
 ```text
-Truth Graph 10,000 network devices
-   ↓ projection subset/fidelity policy
-FakeNOS 100 endpoints
-或 containerlab 10 high-fidelity devices
+Truth
+ ↓ supported NetBox API/import
+real NetBox objects
+ ↓
+DLR / CMDB collector
 ```
 
-这是 Fidelity Ladder 的实际意义。
+比“模仿 NetBox REST routes”更有验证价值。
 
 ---
 
-# 12. 组合后的 ISL 自研最小核心
+## 14. 最终抽取的设计模式
 
-把所有源码调研叠在一起后，需要自己写的其实可以很克制：
+### Pattern A — Truth-first
 
-```text
-1. Scenario schema / revisions
-2. Deterministic compiler
-3. Truth Graph
-4. Projection engine
-5. Driver contract + registry
-6. Lab Agent orchestration
-7. Timeline controller
-8. Fault controller
-9. Ground Truth / Observation / Verifier
-10. AI Scenario authoring surface
-11. DLR-style Web workbench
-```
+所有 backend 从同一 canonical world 获得输入。
 
-下面这些原则上**不自己写**：
+### Pattern B — Driver config is generated artifact
+
+Mockoon config、SNMP records、Redfish populate、YANG datastore 等不污染 Core Scenario model。
+
+### Pattern C — Capability registry
 
 ```text
-HTTP generic mock engine
-vSphere SOAP protocol
-Kubernetes API server behavior
-SNMP PDU engine
-Redfish protocol model
-SSH implementation
-NETCONF protocol stack
-AWS API emulator
-PostgreSQL/MySQL/Redis/Kafka protocols
-TCP chaos proxy
-network NOS virtualization
+actual pinned backend
+  ↓ integration test
+DriverCapabilities
+  ↓
+Compiler + UI
 ```
 
-这条边界应在每个开发 Wave Review 时重新检查。只要 Qoder 开始在 Core 里写一个现有成熟项目已经完整实现的协议，就应暂停并重新评估。
+### Pattern D — Identity map
+
+每个 source 保存 canonical ↔ native identity。
+
+### Pattern E — Lifecycle source-neutral
+
+Core action 是 create/patch/delete/relink/refresh/fault；Driver 翻译为 backend-native operation。
+
+### Pattern F — Shared fault layer
+
+transport fault 尽可能统一，protocol/application fault 由 backend 原生实现。
+
+### Pattern G — Importer registry
+
+格式解析与 Scenario domain 解耦。
+
+### Pattern H — AI proposes structured state
+
+AI 输出 Candidate，经过 strict validation 与 user Apply；不直接触碰 runtime。
+
+---
+
+## 15. 明确不复制
+
+- 某个模拟器的完整协议实现；
+- Microcks/MockForge 的整套 runtime；
+- DLR 前端；
+- vendor proprietary models/images；
+- 任意第三方 capability 未经 pin-version test 的“推测支持”。
+
+研究的目标是**少写代码、提高 fidelity、降低长期维护成本**。
