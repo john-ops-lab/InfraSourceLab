@@ -1,46 +1,53 @@
-# InfraSourceLab 精简架构
+# InfraSourceLab 精简架构设计
+
+> **状态：设计阶段，尚未实现。**
+>
+> 本文描述 Issue #1 的目标架构，不代表 `main` 中已经存在后端、前端、数据库或部署代码。实际状态见 [`status.md`](status.md)。
 
 ## 1. 架构目标
 
-首版架构只为这条链路服务：
+首版架构只为以下链路服务：
 
 ```text
-Prompt / Template
+自然语言或模板
        ↓
-Validated GenerationSpec
+经过校验的 GenerationSpec
        ↓
-Deterministic Generator
+确定性本地生成器
        ↓
-Dataset: CI Records + Relations
+数据集：CI 记录 + CI 关系
        ↓
-Authenticated REST API / Export
+带认证的 REST API / 文件导出
 ```
 
-判断标准不是“未来扩展是否完美”，而是：能否快速完成、容易运行、容易 Review，并能立即给 DLR 和 CMDB 使用。
+判断标准不是“未来扩展是否完美”，而是：
 
----
+- 能否快速实现；
+- 是否容易运行和修改；
+- 是否方便外部审查；
+- 是否能够立即供 DLR 和 CMDB 使用。
 
 ## 2. 总体架构
 
 ```text
 ┌───────────────────────────────────────┐
-│ React Web                             │
+│ React 前端                            │
 │ shadcn/ui + assistant-ui              │
 │                                       │
-│ Create / Datasets / Dataset Detail    │
-│ API & Export / optional Topology      │
+│ 创建 / 数据集 / 数据集详情            │
+│ API 与导出 / 可选简单拓扑             │
 └──────────────────┬────────────────────┘
-                   │ HTTP/JSON
+                   │ HTTP / JSON
                    ▼
 ┌───────────────────────────────────────┐
-│ FastAPI Application                   │
+│ FastAPI 单体应用                      │
 │                                       │
-│ AI Spec Service                       │
-│ GenerationSpec Validation             │
-│ Deterministic Data Generator          │
-│ Dataset CRUD / Query                  │
-│ Bearer Auth                           │
-│ Export                                │
+│ AI 规格服务                           │
+│ GenerationSpec 校验                   │
+│ 确定性数据生成器                      │
+│ 数据集增删查与分页查询                │
+│ Bearer Token 认证                     │
+│ 文件导出                              │
 └───────────────┬───────────────────────┘
                 │ SQLAlchemy
                 ▼
@@ -50,95 +57,65 @@ Authenticated REST API / Export
 └───────────────────────────────────────┘
 ```
 
-正常部署是一个应用容器和一个持久化目录。
+正常部署目标是一个应用容器和一个持久化目录。
 
-不存在独立 Control、Lab Agent、Worker、消息队列、PostgreSQL 集群或运行时容器编排。
+首版不存在：独立控制节点、Lab Agent、Worker、消息队列、PostgreSQL 集群或运行时容器编排。
 
----
-
-## 3. 后端模块
-
-建议保持少量清晰模块：
+## 3. 建议后端模块
 
 ```text
 backend/app/
-  api/
-  auth/
-  ai/
-  specs/
-  generators/
-  datasets/
-  exports/
-  db/
+  api/          路由、分页和错误响应
+  auth/         Bearer Token 校验
+  ai/           自然语言转 GenerationSpec
+  specs/        Pydantic 模型和语义校验
+  generators/   CI 字段与关系生成
+  datasets/     持久化和查询
+  exports/      JSON、CSV、可选 XLSX
+  db/           SQLAlchemy 与 SQLite
 ```
 
-### api
+这是建议结构，不是已经创建的目录。
 
-FastAPI routes、分页参数、统一错误响应。
+不得为未来假设提前建立空的编译器、代理、真值版本、验证器或驱动框架。
 
-### auth
-
-读取 `ISL_API_KEY`，校验 Bearer Token。
-
-### ai
-
-把自然语言转换为结构化 `GenerationSpec`。
-
-### specs
-
-Pydantic model、字段校验、类型和关系引用校验。
-
-### generators
-
-内置 CI 模板、字段生成、关系生成、seed 管理。
-
-### datasets
-
-持久化与查询 CI/关系。
-
-### exports
-
-JSON、CSV、XLSX。
-
-不要建立没有当前职责的 compiler、agent、truth-version、verification 等空模块。
-
----
-
-## 4. 数据生成边界
+## 4. AI 与生成器边界
 
 ### AI 层
 
-AI 只生成小型规格：
-
 ```text
-prompt
+自然语言
   ↓
 GenerationSpec
 ```
 
-AI 不生成完整数据集，不保存数据库，不执行代码，不操作 Docker。
+AI 不负责：
+
+- 逐条生成完整数据集；
+- 直接写数据库；
+- 执行代码或命令；
+- 操作 Docker；
+- 在每次查询时临时生成响应。
 
 ### 本地生成层
 
 ```text
-Validated Spec + Seed + Generator Version
+经过校验的规格 + seed + 生成器版本
   ↓
-CI Records
+CI 记录
   ↓
-Relations
+CI 关系
   ↓
-Integrity Check
+完整性校验
   ↓
-Persist Dataset
+持久化数据集
 ```
 
-生成器负责重复性和完整性。
-
----
+生成器负责重复性、关系完整性和数量摘要。
 
 ## 5. 数据模型
 
-## Dataset
+### 数据集
 
 建议字段：
 
@@ -155,11 +132,11 @@ relation_count
 created_at
 ```
 
-## CIRecord
+### CI 记录
 
 ```text
-id                 database id
-ci_id              stable ID inside dataset
+id                  数据库内部主键
+ci_id               数据集内稳定标识
 dataset_id
 type
 name
@@ -167,20 +144,20 @@ attributes_json
 tags_json
 ```
 
-唯一约束：
+建议唯一约束：
 
 ```text
 (dataset_id, ci_id)
 ```
 
-常用索引：
+建议索引：
 
 ```text
 (dataset_id, type)
 (dataset_id, name)
 ```
 
-## CIRelation
+### CI 关系
 
 ```text
 id
@@ -192,33 +169,21 @@ to_ci_id
 attributes_json
 ```
 
-生成完成前校验 from/to 均存在。
+发布数据集前必须校验 `from_ci_id` 和 `to_ci_id` 都存在。
 
-MVP 不需要：
-
-```text
-ScenarioRevision
-CompileManifest
-LabRun
-TruthVersion
-SourceProjection
-Observation
-VerificationReport
-```
-
----
+MVP 不需要：场景修订、编译清单、运行记录、真值版本、来源投影、观察结果或验证报告。
 
 ## 6. API 边界
 
-### Health
+### 健康检查
 
 ```text
 GET /health
 ```
 
-### AI/Spec
+### AI 与规格
 
-可以使用一个合并接口，也可以拆分，但产品行为必须清楚：
+可以拆分，也可以合并，但必须区分“AI 规格失败”和“本地生成失败”：
 
 ```text
 POST /api/v1/specs/from-prompt
@@ -231,9 +196,7 @@ POST /api/v1/datasets
 POST /api/v1/datasets/generate
 ```
 
-如果合并，响应/错误仍应区分 AI 规格失败与本地数据生成失败。
-
-### Dataset
+### 数据集
 
 ```text
 GET    /api/v1/datasets
@@ -249,68 +212,51 @@ GET /api/v1/datasets/{id}/cis
 GET /api/v1/datasets/{id}/cis/{ci_id}
 ```
 
-查询：
+计划支持：类型、关键字、页码、每页数量。
 
-```text
-type
-q
-page
-page_size
-```
-
-### Relations
+### 关系
 
 ```text
 GET /api/v1/datasets/{id}/relations
 ```
 
-查询：
+计划支持：关系类型、起点、终点、页码、每页数量。
 
-```text
-type
-from_id
-to_id
-page
-page_size
-```
-
-### Export
+### 导出
 
 ```text
 GET /api/v1/datasets/{id}/export?format=json|csv|xlsx
 ```
 
----
+XLSX 属于低优先级，不得阻塞 JSON、CSV 和认证 API 闭环。
 
-## 7. 认证
+## 7. 认证设计
 
 ```text
 ISL_API_KEY
 ```
 
-所有 `/api/v1/*` 数据与变更接口要求：
+所有 `/api/v1/*` 数据和变更接口要求：
 
 ```http
 Authorization: Bearer <key>
 ```
 
-实现保持简单：
+首版只计划实现：
 
-- 环境变量读取；
+- 从环境变量读取；
 - 安全字符串比较；
-- 401；
-- 日志不打印 key；
-- 默认仅监听 localhost。
+- 错误时返回 401；
+- 日志不打印 Key；
+- 默认只对本机发布端口。
 
-首版不存 API Key 表，不做登录用户、Session、OAuth、RBAC。
+不建设用户系统、Session、OAuth、SSO 或 RBAC。
 
-前端可以让用户在当前浏览器会话录入 API Key，并附到请求头。
+前端可以让用户在当前浏览器会话录入 API Key，并附加到请求头。
 
----
+## 8. AI Provider 设计
 
-## 8. AI Provider
-
-环境变量：
+计划使用：
 
 ```text
 ISL_AI_BASE_URL
@@ -319,7 +265,7 @@ ISL_AI_MODEL
 ISL_AI_TIMEOUT_SECONDS
 ```
 
-Provider 接口保持薄：
+Provider 接口保持很薄：
 
 ```python
 class AIProvider(Protocol):
@@ -329,30 +275,27 @@ class AIProvider(Protocol):
 需要：
 
 - OpenAI-compatible HTTP；
-- JSON/structured output；
-- timeout；
-- response size limit；
-- parse/validation diagnostics；
-- fake provider for tests。
+- JSON 或结构化输出；
+- 超时；
+- 输入和响应大小限制；
+- 解析和校验诊断；
+- 测试用假 Provider。
 
 不需要工具调用、Agent、长期会话、知识库、附件或模型市场。
 
----
-
 ## 9. 数据生成策略
 
-每种内置 CI 类型对应一个简单 provider/template：
+每种内置 CI 类型对应一个小型字段生成器或模板：
 
 ```text
-physical_server → server generator
-virtual_machine → VM generator
-application → application generator
-...
+physical_server → 服务器字段生成器
+virtual_machine → 虚拟机字段生成器
+application → 应用字段生成器
 ```
 
-字段使用 seed 控制的 PRNG 和 Mimesis/Faker。
+字段使用受 seed 控制的伪随机数和 Faker/Mimesis 等成熟库。
 
-关系生成器读取已有对象 ID，按简单策略连接：
+关系读取已有对象 ID 后，按简单策略连接：
 
 ```text
 balanced
@@ -361,33 +304,29 @@ random_seeded
 one_to_many
 ```
 
-生成器不需要通用脚本语言。
-
----
+这些是内部策略标识，不建设通用图规则语言。
 
 ## 10. 事务与失败
 
-一次数据集生成应当：
+一次数据集生成计划按以下顺序执行：
 
 ```text
-validate spec
-→ generate in memory/batches
-→ validate relations
-→ persist in one transaction or clearly bounded batches
-→ publish dataset as ready
+校验规格
+→ 生成记录和关系
+→ 校验关系完整性
+→ 在一个事务或明确边界的批次中持久化
+→ 数据集变为可读取状态
 ```
 
-失败时不留下“看起来成功但数据不完整”的数据集。
+失败时不得留下“看起来成功但数据不完整”的数据集。
 
-对 10k 规模，优先 bulk insert，避免逐条 commit。
+万级规模优先使用批量插入，避免逐条提交。
 
-不需要引入队列；先使用同步/异步 HTTP 请求。如果真实测量发现超时，再增加简单 job 状态，不提前建设 Worker 系统。
-
----
+首版不引入队列或 Worker。只有真实测量证明同步请求不够用时，才单独设计后台任务。
 
 ## 11. 前端架构
 
-页面：
+计划页面：
 
 ```text
 /create
@@ -396,67 +335,55 @@ validate spec
 /settings
 ```
 
-Dataset detail 通过 API 分页，不把整个数据集加载到浏览器。
+数据集详情通过后端分页读取，不把整个数据集一次加载到浏览器。
 
-前端不维护另一套数据生成规则；后端 `GenerationSpec` 是唯一权威模型。
+前端不维护另一套生成规则；后端 `GenerationSpec` 是唯一权威模型。
 
----
+## 12. 部署目标
 
-## 12. 部署
-
-用户路径：
+计划用户路径：
 
 ```bash
 cp .env.example .env
 docker compose up --build
 ```
 
-目标：
+目标形态：
 
 ```text
-one app container
-one mounted data directory
-SQLite file
-no Docker socket
-no external database requirement
+一个应用容器
+一个挂载的数据目录
+一个 SQLite 文件
+不使用 Docker socket
+不要求外部数据库
 ```
 
-开发模式可以分开运行 Vite 与 FastAPI。
-
----
+开发模式可以分开运行 Vite 和 FastAPI。
 
 ## 13. 适度安全
 
-必须做：
+必须覆盖的风险：
 
 - API Key；
-- localhost default；
-- request/spec/count limits；
-- safe JSON/Pydantic validation；
-- export filename/path safety；
-- AI key server-side；
-- no secrets in logs；
-- no arbitrary execution。
+- 默认只对本机开放；
+- 请求、规格、数量和分页上限；
+- Pydantic/JSON 安全校验；
+- 导出文件名和路径安全；
+- AI Key 只留在服务端；
+- 日志不包含秘密；
+- 禁止任意代码执行。
 
-不做：
-
-- 多租户隔离；
-- 企业 SSO；
-- Secret Manager 集群；
-- Docker sandbox；
-- mTLS Agent protocol。
-
----
+不建设多租户隔离、企业 SSO、Secret Manager 集群、Docker 沙箱或 mTLS Agent 协议。
 
 ## 14. 未来扩展原则
 
-只有真实使用证明需要时再增加：
+只有真实使用证明需要时，才单独增加：
 
-- 一个具体协议 Adapter；
+- 一个具体协议适配器；
 - 一个具体导入格式；
 - PostgreSQL；
-- 后台生成 Job；
-- 更大规模；
+- 后台生成任务；
+- 更大数据规模；
 - 更复杂拓扑。
 
-扩展应围绕现有 `GenerationSpec → Dataset → API` 增量添加，而不是重新建设平台。
+扩展必须围绕现有的 `GenerationSpec → Dataset → API` 增量增加，不能重新把项目变成平台。
