@@ -1,83 +1,70 @@
 # 时间、故障、Observation 与自动验证设计
 
-## 1. 为什么 Verification 是核心而不是附加功能
+## 1. Verification 是核心能力
 
-如果 InfraSourceLab 只能启动一批模拟接口，它与现有 Mock 工具的差异很小。
+如果 InfraSourceLab 只能启动模拟接口，它与现有 Mock 工具差异很小。
 
-真正服务 DLR/CMDB 的闭环必须是：
+真正闭环：
 
 ```text
-ISL knows the world
+ISL knows canonical world
        ↓
 Sources expose partial/distorted views
        ↓
-DLR / CMDB processes them
+DLR / CMDB / consumer processes them
        ↓
 Observed world comes back
        ↓
 ISL compares Expected vs Actual
 ```
 
-因此 Ground Truth、Observation、Verifier 必须从 M1/M2 就进入领域模型。
+因此 Ground Truth、Observation、Verifier 从 M1/M2 就进入领域模型。
 
 ---
 
 ## 2. Truth Version
 
-初始编译产生：
+初始 Compile：
 
 ```text
-Truth Version 0
+Truth V0
 ```
 
-每个会改变 canonical world 的 timeline step 产生下一版本：
+canonical timeline mutation 产生新版本：
 
 ```text
-V0 ── migrate vm ──> V1
-V1 ── rename host ──> V2
-V2 ── remove server ──> V3
+V0 ─ migrate VM ─→ V1
+V1 ─ rename host ─→ V2
+V2 ─ remove server ─→ V3
 ```
 
-Source Projection 可以有自己的可见版本，因此在 V3 时：
+Source 可以落后：
 
 ```text
-vCenter source → truth V3
-SNMP source    → truth V3
-Excel source   → truth V1   (intentionally stale)
+vCenter → V3
+SNMP    → V3
+Excel   → V1   # intentionally stale
 ```
 
 这是 CMDB 冲突治理测试的重要输入。
 
 ---
 
-## 3. Clock 模式
+## 3. Clock
 
-### 3.1 `manual` — MVP 默认
+### `manual` — MVP
 
-用户明确点击 Step/Advance：
+用户/API 明确执行 Step。优点：确定、可重放、自动测试稳定、不依赖 wall clock。
 
-- 最可重复；
-- 自动测试最稳定；
-- 不依赖 wall clock；
-- 容易 Debug。
+### `realtime` / `scaled` — later
 
-### 3.2 `realtime` — 后续
-
-按真实时间执行 timeline。
-
-适合长时间运行 DLR schedule，但会增加 flaky test 风险。
-
-### 3.3 `scaled` — 后续
-
-例如 1h 虚拟时间 = 1min 实际时间。
-
-只有真实需求出现再做，不阻塞 MVP。
+只有真实长时间 schedule 测试需求出现再做，不阻塞 MVP。
 
 ---
 
-## 4. Timeline Action
+## 4. Timeline Actions
 
-Core action 保持 source-neutral：
+Core action source-neutral：
 
 ```text
 create_entity
@@ -92,83 +79,98 @@ fault_enable
 fault_disable
 ```
 
-Driver 接收到的不是任意代码，而是允许的 typed action。
+Driver 接受 typed action，不接受任意代码。
 
-### 示例
-
-```yaml
-timeline:
-  - id: vm-migrate
-    at: +10m
-    actions:
-      - type: relink_edge
-        entity: vm-007
-        edgeType: runs_on
-        to: esxi-02
-
-      - type: source_refresh
-        source: vcenter-primary
-```
+常用动作通过 Guided UI；Expert YAML 是高级表示。
 
 ---
 
 ## 5. Fault Taxonomy
 
-必须把“数据错”和“连接错”区分开，否则报告不可解释。
-
-### 5.1 Semantic Defect
+### Semantic Defect
 
 发生在 Source Projection：
 
-- missing field；
-- wrong value；
-- stale field；
+- missing/wrong/stale field；
 - duplicate record；
-- identity collision；
+- identity alias/collision；
 - wrong/missing/extra relation；
 - format/case drift。
 
-Ground Truth 明确知道这种差异是故意的。
+### Transport Fault
 
-### 5.2 Transport Fault
+由共享 Fault Backend 负责，M2 默认使用 Toxiproxy。
 
-优先 Toxiproxy：
+### Protocol/Application Fault
 
-- latency / jitter；
-- timeout；
-- down；
-- reset；
-- packet loss；
-- bandwidth；
-- slow close。
-
-### 5.3 Protocol/Application Fault
-
-由 Driver 实现：
+由 Driver/Backend 原生能力负责：
 
 - HTTP 401/403/429/500；
-- invalid/expired pagination token；
-- truncated page；
+- pagination error；
 - malformed response；
-- SNMP error PDU；
-- auth failure；
-- session expiry；
+- SNMP error；
+- auth/session failure；
 - API version mismatch。
 
-### 5.4 Runtime Fault
+### Runtime Fault
 
-Lab backend 自身生命周期：
-
-- container restart；
-- backend unavailable；
+- source restart/unavailable；
 - Agent disconnect；
+- partial start；
 - resource pressure（后期）。
 
-这类主要验证 DLR 的 resiliency，不应与业务数据 defect 混为一谈。
+不同层次不能混成一个笼统 `chaos=true`。
 
 ---
 
-## 6. Fault Model
+## 6. Toxiproxy / Fault Backend Capability Contract
+
+**关键规则：以 InfraSourceLab 实际 pin 的 backend 版本为准。**
+
+上游 `main`、README 或某篇文章声称支持某 toxic，不代表当前发行 Driver 已支持。
+
+流程：
+
+```text
+pinned Toxiproxy version/image
+          ↓
+actual integration tests
+          ↓
+FaultBackendCapabilities
+          ↓
+Compiler/UI exposes only verified faults
+```
+
+M2 基础能力至少优先验证：
+
+- latency + jitter；
+- timeout；
+- reset peer；
+- bandwidth；
+- proxy disable/down；
+- slow-close/limit-data 等按实际版本选择。
+
+`packet_loss`：如果**项目实际 pin 的 Toxiproxy 版本**包含并通过 integration test，则可声明支持；否则 capability=false，不允许 UI/Scenario 假成功。
+
+未来如需 Toxiproxy 不提供的网络特性，可另行评估 Linux `tc/netem` 等更高权限后端，但不能偷偷塞进 M2 或让每个 Driver 各实现一次。
+
+### Endpoint model
+
+```text
+client
+  ↓
+published stable proxy endpoint
+  ↓
+Toxiproxy
+  ↓
+source backend internal endpoint
+```
+
+Toxiproxy admin endpoint 不对普通 client 暴露。
+
+---
+
+## 7. Fault Model
 
 ```yaml
 faults:
@@ -191,57 +193,35 @@ faults:
       jitterMs: 100
 ```
 
-### Capability Gate
-
-Compiler 校验：
-
-```text
-requested fault
-   ↓
-driver capabilities
-   ↓ supported? yes/no
-```
-
-不允许默默忽略一个 Driver 不支持的 fault。
+Compiler 在 Authoritative Compile 前检查 Driver/FaultBackend capability，不允许 unsupported fault silently no-op。
 
 ---
 
-# 7. Ground Truth API
+## 8. Ground Truth API
 
-目标：测试程序不需要访问 ISL DB。
+测试程序不访问 ISL 内部 DB。
 
-建议 endpoint：
-
-```text
-GET /api/runs/{run}/truth/versions
-GET /api/runs/{run}/truth/nodes
-GET /api/runs/{run}/truth/nodes/{id}
-GET /api/runs/{run}/truth/edges
-GET /api/runs/{run}/truth/sources/{source}
-GET /api/runs/{run}/truth/defects
-GET /api/runs/{run}/manifest
-```
-
-每个结果带：
+建议：
 
 ```text
-run_id
-scenario_revision
-truth_version
-manifest_digest
+GET /api/compiles/{compile}/truth/versions
+GET /api/compiles/{compile}/truth/nodes
+GET /api/compiles/{compile}/truth/nodes/{id}
+GET /api/compiles/{compile}/truth/edges
+GET /api/compiles/{compile}/truth/sources/{source}
+GET /api/compiles/{compile}/truth/defects
+GET /api/compiles/{compile}/manifest
 ```
 
-### 大数据
+Run 引用 Compile，因此 Run API 可提供关联导航，但 canonical initial truth 属于 Compile provenance。
 
-必须分页/stream/export，不能让 `/truth/nodes` 一次返回 100k 对象。
+所有大列表分页/stream/export，不能一次返回 100k。
 
 ---
 
-# 8. Observation Schema
+## 9. Observation Schema
 
-不要绑定未来 CMDB 的数据库表。
-
-建议统一接受：
+Observation 不要求使用 ISL canonical IDs。
 
 ```json
 {
@@ -254,40 +234,31 @@ manifest_digest
     {
       "observed_id": "abc",
       "kind": "virtual_machine",
-      "identity": {
-        "uuid": "..."
-      },
-      "attributes": {
-        "name": "vm-007",
-        "ip": "10.30.1.7"
-      }
+      "identity": {"uuid": "..."},
+      "attributes": {"name": "vm-007", "ip": "10.30.1.7"}
     }
   ],
   "edges": [
-    {
-      "type": "runs_on",
-      "from": "abc",
-      "to": "host-x"
-    }
+    {"type": "runs_on", "from": "abc", "to": "host-x"}
   ]
 }
 ```
 
-### Observation 不是要求下游使用 ISL canonical IDs
-
-恰恰相反，Verifier 的重要工作之一就是通过 configured identity selectors 匹配：
+Verifier 的重要工作之一就是：
 
 ```text
-observed identity → canonical entity
+observed identities
+     ↓ configured selectors/indexes
+canonical entity
 ```
 
 否则无法测试 CMDB identity resolution。
 
 ---
 
-## 9. Verification Profile
+## 10. Verification Profile
 
-不同下游的字段语义不同，比较规则要显式：
+显式描述不同下游字段/身份语义：
 
 ```yaml
 verificationProfiles:
@@ -298,216 +269,129 @@ verificationProfiles:
           anyOf:
             - observed: identity.instance_uuid
               truth: attributes.instance_uuid
-            - observed: identity.bios_uuid
-              truth: attributes.bios_uuid
         fields:
           name: attributes.name
-          power_state: attributes.power_state
         relations:
           runs_on: runs_on
 ```
 
-### 比较类型
+安全 normalizers：
 
 - exact；
-- normalized string；
-- case-insensitive；
-- IP normalized；
+- normalized/case-insensitive string；
+- IP normalize；
 - timestamp tolerance；
 - set comparison；
-- numeric tolerance；
-- custom bounded normalization（后期）。
+- numeric tolerance。
 
-第一版不要支持任意 Python comparator。
+第一版不支持任意 Python comparator。
 
 ---
 
-# 10. Verification Findings
+## 11. Findings
 
-统一 finding：
-
-```json
-{
-  "severity": "error",
-  "type": "missing_entity",
-  "canonical_id": "vm-0381",
-  "observed_id": null,
-  "path": null,
-  "expected": "present",
-  "actual": "missing",
-  "source_context": "vcenter-primary"
-}
-```
-
-类型至少包括：
+至少：
 
 ```text
 missing_entity
 extra_entity
 ambiguous_identity
 identity_collision
+duplicate_observation
 missing_field
 wrong_field
 missing_relation
 wrong_relation_target
 extra_relation
-duplicate_observation
 stale_observation
 ```
 
-### Summary
-
-```text
-Expected nodes: 1500
-Matched:        1498
-Missing:        2
-Extra:          1
-Field errors:   7
-Relation errors:3
-```
+Finding 保存 bounded expected/actual、canonical/observed identity、path、source/truth context。
 
 ---
 
-## 11. 对“故意脏数据”的理解
+## 12. 两种 Verification Mode
 
-Verifier 需要两种模式：
-
-### Source Fidelity Verification
-
-验证 DLR 是否忠实采集 **source actually exposed** 的数据。
-
-例如 Excel source 故意写错 IP，那么 DLR 采到错误 IP 反而是“采集正确”。
-
-比较：
+### Source Fidelity
 
 ```text
 Observation vs Source Projection
 ```
 
-### Canonical Outcome Verification
+验证 DLR/collector 是否忠实采到“来源实际暴露的内容”。如果 Excel 故意错 IP，DLR 采到这个错 IP 在此模式应 PASS。
 
-验证 CMDB 最终治理结果是否回到正确 Truth。
-
-比较：
+### Canonical Outcome
 
 ```text
-CMDB Observation vs Canonical Truth
+CMDB/consumer Observation vs Canonical Truth
 ```
 
-这是必须明确区分的两个层次。
+验证治理/去重/融合结果是否回到正确 Truth。
+
+UI/API 不得混淆两种 PASS/FAIL。
 
 ---
 
-# 12. DLR E2E 模式
-
-M2 建议先做最简单闭环：
+## 13. DLR / Consumer E2E
 
 ```text
-ISL HTTP/Postgres source
+ISL HTTP/Postgres Source
        ↓
-DLR Adapter
+DLR Adapter / representative consumer
        ↓
-Execution.output or dedicated test output
+normalized output
        ↓
-Test Harness
-       ↓
-ISL Observation API
+Observation API
        ↓
 Verifier
 ```
 
-不要要求 DLR 正式业务逻辑主动依赖 ISL。
-
-可提供一个测试 helper：
-
-```text
-isl verify --run <id> --profile dlr-http --file output.json
-```
-
-或 API equivalent。
+DLR 正式产品不硬依赖 ISL。
 
 ---
 
-# 13. CMDB E2E 模式
-
-未来 CMDB 只需要能导出一个 normalization adapter：
-
-```text
-CMDB REST/DB
-    ↓
-CMDB Observation Exporter
-    ↓
-ISL Observation Schema
-    ↓
-Verifier
-```
-
-这样 ISL 不需要知道 CMDB 内部 table/model。
-
----
-
-# 14. Report
+## 14. Report
 
 MVP：
 
-- JSON authoritative report；
-- Web 表格/筛选/详情；
-- downloadable JSON。
+- authoritative JSON；
+- Web filter/table/detail；
+- downloadable JSON；
+- provenance：Revision/Compile/Truth/Observation/Profile/compiler versions。
 
-后期：
-
-- JUnit XML（CI gate）；
-- Markdown summary；
-- HTML standalone；
-- baseline comparison。
-
-### Report 必须记录 provenance
-
-```text
-scenario revision
-truth version
-observation digest
-verification profile version
-compiler version
-created_at
-```
-
-否则结果无法复现。
+M6 增加 JUnit/CI gate 等。
 
 ---
 
-# 15. 性能策略
+## 15. 性能策略
 
-100k entity 场景下不能 O(n²) 全量比较。
+100k entity 不能 O(n²)：
 
-建议：
+- canonical identity indexes；
+- batch normalize；
+- hash/index matching；
+- canonical edge hash；
+- large findings pagination；
+- 必要时 DB batch/temp tables。
 
-1. 预先计算 canonical identity indexes；
-2. observation 批量 normalize；
-3. hash/index matching；
-4. edges 使用 canonicalized endpoint pair hash；
-5. large reports store counts + paginated findings；
-6. PostgreSQL temporary/batch tables 可用于超大 comparison。
-
-M6 再做规模优化，但 M2 的算法不能从一开始就是 nested loops。
+M6 做规模优化，但 M2 算法从一开始不能是 nested full scans。
 
 ---
 
-# 16. 测试要求
+## 16. 测试要求
 
-Verifier 必须有 property/fixture tests 覆盖：
+至少覆盖：
 
-- 完全一致；
-- 缺失；
-- extra；
-- duplicate；
-- identity alias；
-- ambiguous identity；
-- relation wrong target；
-- source stale vs truth；
-- case normalization；
+- perfect match；
+- missing/extra/duplicate；
+- alias/ambiguous/collision；
+- wrong field/relation；
+- stale source；
 - order-independent collections；
-- pagination/batch；
-- 10k+ data smoke。
+- 10k+ smoke；
+- Source Fidelity 与 Canonical Outcome 差异；
+- actual pinned Toxiproxy capability tests；
+- unsupported fault rejected；
+- fault enable/disable/recover/cleanup。
 
-这些测试比 Web screenshot 更重要，因为 Verifier 是产品可信度核心。
+这些可信度测试比“页面截图好看”更重要。
