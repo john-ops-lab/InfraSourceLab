@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest"
-import { computeDepths, computeDrilldownLayout, unifiedEdgeEndpoints } from "@/components/TopologyView"
-import { RELATION_TYPE_LABELS, relationTypeLabel } from "@/lib/spec"
+import { computeDepths, computeDrilldownLayout } from "@/components/TopologyView"
+import {
+  DEFAULT_HIERARCHY_TYPES,
+  RELATION_TYPE_LABELS,
+  relationTypeLabel,
+  type RelationTypeLabelSource,
+} from "@/lib/spec"
 
 const TYPE_ORDER = [
   "data_center",
@@ -19,34 +24,6 @@ function edge(id: string, type: string, from: string, to: string) {
   return { id, type, from_id: from, to_id: to }
 }
 
-describe("unifiedEdgeEndpoints", () => {
-  it("contains 的显示方向反转为子→父，其余层级关系保持原方向，箭头一律向上", () => {
-    // contains：from=父(dc) 在上，反转后 source=子(rack)→target=父(dc)，箭头向上
-    expect(unifiedEdgeEndpoints(edge("e1", "contains", "dc-1", "rack-1"))).toEqual({
-      source: "rack-1",
-      target: "dc-1",
-    })
-    // runs_on/mounted_in/deployed_on：from=子 在下，方向不变
-    expect(unifiedEdgeEndpoints(edge("e2", "runs_on", "vm-1", "server-1"))).toEqual({
-      source: "vm-1",
-      target: "server-1",
-    })
-    expect(unifiedEdgeEndpoints(edge("e3", "mounted_in", "server-1", "rack-1"))).toEqual({
-      source: "server-1",
-      target: "rack-1",
-    })
-    expect(unifiedEdgeEndpoints(edge("e4", "deployed_on", "app-1", "vm-1"))).toEqual({
-      source: "app-1",
-      target: "vm-1",
-    })
-    // 平级关系（uses 等）不反转
-    expect(unifiedEdgeEndpoints(edge("e5", "uses", "app-1", "db-1"))).toEqual({
-      source: "app-1",
-      target: "db-1",
-    })
-  })
-})
-
 describe("relationTypeLabel", () => {
   it("三种展示模式：中英对照 / 中文 / 英文，未知类型回退原文", () => {
     expect(relationTypeLabel("runs_on")).toBe("runs_on(运行于)")
@@ -55,13 +32,13 @@ describe("relationTypeLabel", () => {
     expect(relationTypeLabel("mystery")).toBe("mystery")
   })
 
-  it("对照表覆盖后端 BUILTIN_RELATION_TYPES 全部 15 种关系类型", () => {
+  it("对照表覆盖后端 DEFAULT_RELATION_TYPES 全部 15 种关系类型（contained_in 替代 contains）", () => {
     expect(Object.keys(RELATION_TYPE_LABELS).sort()).toEqual([
       "backup_of",
       "belongs_to",
       "connected_to",
       "consumes",
-      "contains",
+      "contained_in",
       "depends_on",
       "deployed_on",
       "has_ip",
@@ -74,10 +51,56 @@ describe("relationTypeLabel", () => {
       "uses",
     ])
   })
+
+  it("注册表覆盖内置对照：中英文与对照模式都取注册表维护的名称", () => {
+    const registry = new Map<string, RelationTypeLabelSource>([
+      ["runs_on", { name_zh: "跑在之上", name_en: "runs on" }],
+      ["monitors", { name_zh: "监控", name_en: "monitors" }],
+    ])
+    expect(relationTypeLabel("runs_on", "both", registry)).toBe("runs on(跑在之上)")
+    expect(relationTypeLabel("runs_on", "zh", registry)).toBe("跑在之上")
+    expect(relationTypeLabel("runs_on", "en", registry)).toBe("runs on")
+    expect(relationTypeLabel("monitors", "zh", registry)).toBe("监控")
+    expect(relationTypeLabel("contained_in", "both", registry)).toBe("contained_in(包含于)")
+  })
+})
+
+describe("层级类型", () => {
+  it("默认层级类型与后端种子一致：全部 from=子、to=父", () => {
+    expect([...DEFAULT_HIERARCHY_TYPES].sort()).toEqual([
+      "belongs_to",
+      "contained_in",
+      "deployed_on",
+      "hosted_on",
+      "mounted_in",
+      "runs_on",
+    ])
+  })
+
+  it("自定义层级类型参与分层；未收录的类型默认不分层", () => {
+    const depths = computeDepths(
+      [node("app-1", "application"), node("mw-1", "middleware")],
+      [edge("e1", "monitors", "app-1", "mw-1")],
+      TYPE_ORDER,
+      new Set(["monitors"]),
+    )
+    // monitors 被注册表声明为 child_to_parent：mw-1 是父，app-1 是子
+    expect(depths.get("mw-1")).toBe(0)
+    expect(depths.get("app-1")).toBe(1)
+
+    // 默认清单不含 monitors：两端都是孤岛
+    const orphanDepths = computeDepths(
+      [node("app-1", "application"), node("mw-1", "middleware")],
+      [edge("e1", "monitors", "app-1", "mw-1")],
+      TYPE_ORDER,
+    )
+    expect(orphanDepths.get("app-1")).toBe(0)
+    expect(orphanDepths.get("mw-1")).toBe(1)
+  })
 })
 
 describe("computeDepths", () => {
-  it("按真实关系分层：contains 向下、mounted_in/runs_on/hosted_on 向上归一为父在上", () => {
+  it("层级关系统一子→父：contained_in/mounted_in/runs_on/hosted_on 一律父在上", () => {
     const depths = computeDepths(
       [
         node("dc-1", "data_center"),
@@ -87,7 +110,8 @@ describe("computeDepths", () => {
         node("app-1", "application"),
       ],
       [
-        edge("e1", "contains", "dc-1", "rack-1"),
+        // rack contained_in data_center：from=子(rack)、to=父(dc)
+        edge("e1", "contained_in", "rack-1", "dc-1"),
         edge("e2", "mounted_in", "server-1", "rack-1"),
         edge("e3", "runs_on", "vm-1", "server-1"),
         edge("e4", "hosted_on", "app-1", "vm-1"),
@@ -104,7 +128,7 @@ describe("computeDepths", () => {
   it("分层不依赖类型声明顺序（乱序 spec 也能得到正确层级）", () => {
     const depths = computeDepths(
       [node("app-1", "application"), node("dc-1", "data_center"), node("rack-1", "rack")],
-      [edge("e1", "contains", "dc-1", "rack-1"), edge("e2", "hosted_on", "app-1", "rack-1")],
+      [edge("e1", "contained_in", "rack-1", "dc-1"), edge("e2", "hosted_on", "app-1", "rack-1")],
       // spec 声明顺序故意与层级相反
       ["application", "rack", "data_center"],
     )
@@ -117,8 +141,8 @@ describe("computeDepths", () => {
     const depths = computeDepths(
       [node("dc-1", "data_center"), node("rack-1", "rack"), node("server-1", "physical_server")],
       [
-        edge("e1", "contains", "dc-1", "rack-1"),
-        edge("e2", "contains", "dc-1", "server-1"),
+        edge("e1", "contained_in", "rack-1", "dc-1"),
+        edge("e2", "contained_in", "server-1", "dc-1"),
         edge("e3", "mounted_in", "server-1", "rack-1"),
       ],
       TYPE_ORDER,
@@ -142,7 +166,7 @@ describe("computeDepths", () => {
   it("孤岛节点排在层级图下方", () => {
     const depths = computeDepths(
       [node("dc-1", "data_center"), node("rack-1", "rack"), node("db-1", "database")],
-      [edge("e1", "contains", "dc-1", "rack-1")],
+      [edge("e1", "contained_in", "rack-1", "dc-1")],
       TYPE_ORDER,
     )
     expect(depths.get("db-1")).toBe(2)
@@ -152,7 +176,7 @@ describe("computeDepths", () => {
     const depths = computeDepths(
       [node("a", "rack"), node("b", "rack"), node("dc-1", "data_center"), node("rack-1", "rack")],
       [
-        edge("e1", "contains", "dc-1", "rack-1"),
+        edge("e1", "contained_in", "rack-1", "dc-1"),
         edge("e2", "mounted_in", "a", "b"),
         edge("e3", "mounted_in", "b", "a"),
       ],
@@ -174,7 +198,7 @@ const CHAIN_NODES = [
   node("vm-2", "virtual_machine"),
 ]
 const CHAIN_EDGES = [
-  edge("e1", "contains", "dc-1", "rack-1"),
+  edge("e1", "contained_in", "rack-1", "dc-1"),
   edge("e2", "mounted_in", "server-1", "rack-1"),
   edge("e3", "mounted_in", "server-2", "rack-1"),
   edge("e4", "runs_on", "vm-1", "server-1"),
@@ -238,8 +262,8 @@ describe("computeDrilldownLayout", () => {
       node("rack-1", "rack"),
     ]
     const edges = [
-      edge("e1", "contains", "dc-1", "rack-1"),
-      edge("e2", "contains", "dc-2", "rack-1"),
+      edge("e1", "contained_in", "rack-1", "dc-1"),
+      edge("e2", "contained_in", "rack-1", "dc-2"),
     ]
     // 先展开 dc-2：rack-1 归属 dc-2 子树
     const layout = computeDrilldownLayout(nodes, edges, TYPE_ORDER, ["dc-2"])
@@ -260,7 +284,7 @@ describe("computeDrilldownLayout", () => {
       node("db-1", "database"),
     ]
     const edges = [
-      edge("e1", "contains", "dc-1", "rack-1"),
+      edge("e1", "contained_in", "rack-1", "dc-1"),
       edge("e2", "uses", "app-1", "db-1"),
       // app 挂在 rack 下，db 只被平级引用 → db 是孤岛根
       edge("e3", "hosted_on", "app-1", "rack-1"),

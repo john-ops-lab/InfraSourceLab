@@ -1,8 +1,10 @@
+import { useMemo } from "react"
 import { Plus, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { useRelationTypes } from "@/hooks/useRelationTypes"
 import {
   Select,
   SelectContent,
@@ -36,6 +38,18 @@ export function SpecEditor({ spec, onChange, disabled }: SpecEditorProps) {
   const totalWarning = total > TOTAL_LIMIT
   const usedTypes = new Set(spec.ci_types.map((entry) => entry.type))
   const availableTypes = Object.keys(CI_TYPE_LABELS).filter((t) => !usedTypes.has(t))
+
+  // 关系类型选项：注册表（设置页可维护）优先；未加载时回退内置清单；
+  // spec 中已用但注册表已删的类型保留在末尾，避免编辑旧数据集时丢类型
+  const { relationTypes, registry } = useRelationTypes()
+  const relationOptions = useMemo(() => {
+    const registered = relationTypes.map((row) => row.type)
+    const extras = [...new Set(spec.relations.map((entry) => entry.type))].filter(
+      (type) => !registered.includes(type),
+    )
+    const base = registered.length > 0 ? registered : Object.keys(RELATION_TYPE_LABELS)
+    return [...base, ...extras]
+  }, [relationTypes, spec.relations])
 
   const updateCiType = (index: number, patch: Partial<GenerationSpec["ci_types"][number]>) => {
     const ciTypes = spec.ci_types.map((entry, i) => (i === index ? { ...entry, ...patch } : entry))
@@ -192,9 +206,9 @@ export function SpecEditor({ spec, onChange, disabled }: SpecEditorProps) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.keys(RELATION_TYPE_LABELS).map((value) => (
+                  {relationOptions.map((value) => (
                     <SelectItem key={value} value={value}>
-                      {relationTypeLabel(value)}
+                      {relationTypeLabel(value, "both", registry)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -288,7 +302,9 @@ export function SpecEditor({ spec, onChange, disabled }: SpecEditorProps) {
               relations: [
                 ...spec.relations,
                 {
-                  type: "depends_on",
+                  type: relationOptions.includes("depends_on")
+                    ? "depends_on"
+                    : (relationOptions[0] ?? "depends_on"),
                   from_type: first.type,
                   to_type: first.type,
                   strategy: "balanced",

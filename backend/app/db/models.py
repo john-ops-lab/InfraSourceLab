@@ -6,6 +6,7 @@
 from datetime import datetime, timezone
 
 from sqlalchemy import (
+    Boolean,
     DateTime,
     ForeignKey,
     Index,
@@ -115,3 +116,20 @@ class AppSetting(Base):
 
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     value: Mapped[str] = mapped_column(Text, default="", nullable=False)
+
+
+class RelationType(Base):
+    """关系类型注册表：中英文名称与分层方向可在设置页维护。
+
+    direction：child_to_parent（层级，from=子 to=父，参与拓扑分层）
+    或 peer（平级，不参与分层仅绘制）。
+    """
+
+    __tablename__ = "relation_types"
+
+    type: Mapped[str] = mapped_column(String(40), primary_key=True)
+    name_zh: Mapped[str] = mapped_column(String(40), nullable=False)
+    name_en: Mapped[str] = mapped_column(String(80), nullable=False)
+    direction: Mapped[str] = mapped_column(String(20), nullable=False)
+    is_builtin: Mapped[bool] = mapped_column(default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)

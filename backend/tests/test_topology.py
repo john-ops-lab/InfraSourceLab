@@ -11,8 +11,8 @@ SPEC = {
         {"type": "virtual_machine", "count": 20},
     ],
     "relations": [
-        {"type": "contains", "from_type": "data_center", "to_type": "rack",
-         "strategy": "balanced", "coverage": "to"},
+        {"type": "contained_in", "from_type": "rack", "to_type": "data_center",
+         "strategy": "balanced", "coverage": "from"},
         {"type": "mounted_in", "from_type": "physical_server", "to_type": "rack",
          "strategy": "balanced", "coverage": "from"},
         {"type": "runs_on", "from_type": "virtual_machine", "to_type": "physical_server",

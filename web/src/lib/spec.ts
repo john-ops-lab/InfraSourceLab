@@ -110,10 +110,11 @@ export const CI_TYPE_LABELS: Record<string, string> = {
   kubernetes_workload: "Kubernetes 工作负载",
 }
 
-// 关系类型中文对照（口径与后端 BUILTIN_RELATION_TYPES 一致，
-// 覆盖业界 CMDB 常见关系：包含/安装/运行/托管/部署/归属/依赖/使用/连接/管理/服务提供与消费/备份）
+// 关系类型中文对照（回退默认，口径与后端 DEFAULT_RELATION_TYPES 一致，
+// 覆盖业界 CMDB 常见关系：包含于/安装/运行/托管/部署/归属/依赖/使用/连接/管理/服务提供与消费/备份）。
+// 层级关系统一「子→父」方向（如 rack contained_in data_center），运行时由设置页维护的注册表覆盖。
 export const RELATION_TYPE_LABELS: Record<string, string> = {
-  contains: "包含",
+  contained_in: "包含于",
   mounted_in: "安装于",
   runs_on: "运行于",
   hosted_on: "托管于",
@@ -130,14 +131,37 @@ export const RELATION_TYPE_LABELS: Record<string, string> = {
   backup_of: "备份于",
 }
 
+// 层级关系（direction=child_to_parent，from=子、to=父）参与拓扑分层；
+// 注册表未加载时的回退清单，口径与后端种子一致
+export const DEFAULT_HIERARCHY_TYPES: ReadonlySet<string> = new Set([
+  "contained_in",
+  "mounted_in",
+  "runs_on",
+  "hosted_on",
+  "deployed_on",
+  "belongs_to",
+])
+
 // 关系标签展示模式：中文 / 英文 / 中英对照（如 runs_on(运行于)）
 export type RelationLabelMode = "zh" | "en" | "both"
 
-export function relationTypeLabel(type: string, mode: RelationLabelMode = "both"): string {
-  const zh = RELATION_TYPE_LABELS[type]
-  if (mode === "en" || !zh) return type
-  if (mode === "zh") return zh
-  return `${type}(${zh})`
+// 注册表条目的标签来源（结构上兼容 api.RelationTypeInfo）
+export interface RelationTypeLabelSource {
+  name_zh: string
+  name_en: string
+}
+
+export function relationTypeLabel(
+  type: string,
+  mode: RelationLabelMode = "both",
+  registry?: Map<string, RelationTypeLabelSource>,
+): string {
+  const row = registry?.get(type)
+  const en = row?.name_en || type
+  const zh = row?.name_zh ?? RELATION_TYPE_LABELS[type]
+  if (mode === "en") return en
+  if (mode === "zh") return zh ?? type
+  return zh ? `${en}(${zh})` : type
 }
 
 export const DEFECT_KIND_LABELS: Record<DefectKind, string> = {
@@ -151,10 +175,14 @@ export function ciTypeLabel(type: string): string {
   return CI_TYPE_LABELS[type] ?? type
 }
 
-export function formatRelation(entry: RelationEntry): string {
+export function formatRelation(
+  entry: RelationEntry,
+  registry?: Map<string, RelationTypeLabelSource>,
+): string {
+  const label = relationTypeLabel(entry.type, "both", registry)
   const coverage =
     entry.coverage === "from" ? "coverage=from（覆盖每个起点）" : "coverage=to（覆盖每个终点）"
-  return `${entry.type}：${entry.from_type} → ${entry.to_type}（${entry.strategy}，${coverage}）`
+  return `${label}：${entry.from_type} → ${entry.to_type}（${entry.strategy}，${coverage}）`
 }
 
 export function totalCiCount(spec: GenerationSpec): number {

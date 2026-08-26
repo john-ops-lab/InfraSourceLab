@@ -24,6 +24,7 @@ from ..limits import (
     MAX_TOPOLOGY_NODES,
 )
 from ..specs.models import SpecValidationError, parse_and_validate
+from ..specs.relation_types import relation_type_map
 from .deps import get_session
 
 router = APIRouter(prefix="/api/v1/datasets", tags=["数据集"], dependencies=[Depends(require_auth)])
@@ -69,7 +70,7 @@ def _get_dataset_or_404(session: Session, dataset_id: int) -> Dataset:
 @router.post("", status_code=201)
 def create_dataset(body: DatasetCreateRequest, session: Session = Depends(get_session)) -> dict:
     try:
-        spec = parse_and_validate(body.spec)
+        spec = parse_and_validate(body.spec, allowed_relation_types=set(relation_type_map(session)))
     except SpecValidationError as exc:
         raise HTTPException(status_code=422, detail={"errors": exc.errors}) from exc
 

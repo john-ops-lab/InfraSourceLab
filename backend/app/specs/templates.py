@@ -17,8 +17,8 @@ BUILTIN_TEMPLATES: list[dict] = [
                 {"type": "application", "count": 8},
             ],
             "relations": [
-                {"type": "contains", "from_type": "data_center", "to_type": "rack",
-                 "strategy": "balanced", "coverage": "to"},
+                {"type": "contained_in", "from_type": "rack", "to_type": "data_center",
+                 "strategy": "balanced", "coverage": "from"},
                 {"type": "mounted_in", "from_type": "physical_server", "to_type": "rack",
                  "strategy": "balanced", "coverage": "from"},
                 {"type": "runs_on", "from_type": "virtual_machine", "to_type": "physical_server",
@@ -44,8 +44,8 @@ BUILTIN_TEMPLATES: list[dict] = [
                 {"type": "application", "count": 80},
             ],
             "relations": [
-                {"type": "contains", "from_type": "data_center", "to_type": "rack",
-                 "strategy": "balanced", "coverage": "to"},
+                {"type": "contained_in", "from_type": "rack", "to_type": "data_center",
+                 "strategy": "balanced", "coverage": "from"},
                 {"type": "mounted_in", "from_type": "physical_server", "to_type": "rack",
                  "strategy": "balanced", "coverage": "from"},
                 {"type": "runs_on", "from_type": "virtual_machine", "to_type": "physical_server",
@@ -93,8 +93,8 @@ BUILTIN_TEMPLATES: list[dict] = [
                 {"type": "virtual_machine", "count": 10},
             ],
             "relations": [
-                {"type": "contains", "from_type": "kubernetes_cluster", "to_type": "kubernetes_node",
-                 "strategy": "balanced", "coverage": "to"},
+                {"type": "contained_in", "from_type": "kubernetes_node", "to_type": "kubernetes_cluster",
+                 "strategy": "balanced", "coverage": "from"},
                 {"type": "belongs_to", "from_type": "kubernetes_workload", "to_type": "kubernetes_cluster",
                  "strategy": "balanced", "coverage": "from"},
                 {"type": "runs_on", "from_type": "kubernetes_node", "to_type": "virtual_machine",

@@ -42,6 +42,7 @@ import { CodeCopy } from "@/components/CodeCopy"
 import { Pagination } from "@/components/Pagination"
 import { TopologyView } from "@/components/TopologyView"
 import { api, ApiError, type DatasetDetail } from "@/lib/api"
+import { useRelationTypes } from "@/hooks/useRelationTypes"
 import {
   ciTypeLabel,
   formatRelation,
@@ -83,6 +84,9 @@ export default function DatasetDetailPage() {
 
   const [selectedCi, setSelectedCi] = useState<CIRecord | null>(null)
   const [exporting, setExporting] = useState<string | null>(null)
+
+  // 关系类型注册表：关系列表/筛选/规格展示的中英文对照动态化
+  const { registry } = useRelationTypes()
 
   useEffect(() => {
     let cancelled = false
@@ -260,7 +264,7 @@ export default function DatasetDetailPage() {
                   <ul className="space-y-2">
                     {detail.spec.relations.map((entry, index) => (
                       <li key={index} className="text-sm">
-                        {formatRelation(entry)}
+                        {formatRelation(entry, registry)}
                       </li>
                     ))}
                   </ul>
@@ -399,7 +403,7 @@ export default function DatasetDetailPage() {
               <SelectItem value="all">全部关系</SelectItem>
               {[...new Set(relationTypes)].map((type) => (
                 <SelectItem key={type} value={type}>
-                  {type}
+                  {relationTypeLabel(type, "both", registry)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -427,7 +431,7 @@ export default function DatasetDetailPage() {
                     <TableRow key={relation.id}>
                       <TableCell className="font-mono text-xs">{relation.id}</TableCell>
                       <TableCell>
-                        <Badge variant="outline">{relationTypeLabel(relation.type)}</Badge>
+                        <Badge variant="outline">{relationTypeLabel(relation.type, "both", registry)}</Badge>
                       </TableCell>
                       <TableCell>
                         <div className="font-medium">{relation.from_name}</div>

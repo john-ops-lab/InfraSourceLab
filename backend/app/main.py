@@ -12,11 +12,15 @@ from fastapi.staticfiles import StaticFiles
 
 from .ai.config import AIConfigStore
 from .ai.provider import OpenAICompatibleProvider
-from .api import admin, auth_routes, datasets, health, specs, status, templates
+from .api import admin, auth_routes, datasets, health, relation_types, specs, status, templates
 from .auth.password import hash_password
 from .config import Settings
 from .db.models import AppUser
 from .db.session import DatabaseVersionError, create_session_factory, init_database
+from .specs.relation_types import (
+    migrate_contains_to_contained_in,
+    seed_relation_types,
+)
 
 logger = logging.getLogger("infrasourcelab")
 
@@ -37,6 +41,22 @@ def _seed_default_admin(session_factory) -> None:
             session.commit()
 
 
+def _load_relation_type_rows(session_factory) -> list[dict]:
+    """供 AI 提示词动态生成关系清单（type、中英文名、方向）。"""
+    from .specs.relation_types import list_relation_types
+
+    with session_factory() as session:
+        return [
+            {
+                "type": row.type,
+                "name_zh": row.name_zh,
+                "name_en": row.name_en,
+                "direction": row.direction,
+            }
+            for row in list_relation_types(session)
+        ]
+
+
 def create_app(settings: Settings | None = None, ai_provider=None) -> FastAPI:
     settings = settings or Settings()
 
@@ -52,8 +72,16 @@ def create_app(settings: Settings | None = None, ai_provider=None) -> FastAPI:
     app.state.engine = engine
     app.state.session_factory = create_session_factory(engine)
     _seed_default_admin(app.state.session_factory)
+    with app.state.session_factory() as session:
+        # 关系类型注册表：先种入内置清单，再把历史 contains 数据归一为 contained_in
+        seed_relation_types(session)
+        migrate_contains_to_contained_in(session)
     app.state.ai_config_store = AIConfigStore(settings, app.state.session_factory)
-    app.state.ai_provider = ai_provider or OpenAICompatibleProvider(settings, app.state.ai_config_store)
+    app.state.ai_provider = ai_provider or OpenAICompatibleProvider(
+        settings,
+        app.state.ai_config_store,
+        relation_types_loader=lambda: _load_relation_type_rows(app.state.session_factory),
+    )
 
     app.include_router(health.router)
     app.include_router(status.router)
@@ -62,6 +90,8 @@ def create_app(settings: Settings | None = None, ai_provider=None) -> FastAPI:
     app.include_router(datasets.router)
     app.include_router(auth_routes.router)
     app.include_router(admin.router)
+    app.include_router(relation_types.router)
+    app.include_router(relation_types.admin_router)
 
     # 前端静态产物：生产镜像内置；开发时可缺省。
     # 先注册 API 路由再挂载，未命中的非 API 路径回退到 index.html 以支持 SPA 深链。

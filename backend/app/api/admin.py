@@ -7,10 +7,10 @@ from ..ai.provider import (
     AINotConfiguredError,
     AIProviderError,
     AITimeoutError,
-    DEFAULT_SYSTEM_PROMPT,
+    build_default_system_prompt,
 )
 from ..auth.token import require_admin_session
-from .deps import get_ai_provider
+from .deps import get_ai_provider, get_session
 
 router = APIRouter(prefix="/api/v1/admin", tags=["管理"], dependencies=[Depends(require_admin_session)])
 
@@ -100,16 +100,34 @@ class PromptConfigUpdate(BaseModel):
     custom_prompt: str | None = Field(default=None, max_length=8000)
 
 
+def _relation_type_rows(session) -> list[dict]:
+    """把数据库关系类型注册表转为提示词构建入参。"""
+    from ..specs.relation_types import list_relation_types
+
+    return [
+        {"type": row.type, "name_zh": row.name_zh, "name_en": row.name_en, "direction": row.direction}
+        for row in list_relation_types(session)
+    ]
+
+
 @router.get("/ai-prompts", response_model=PromptConfigResponse)
-def get_ai_prompts(request: Request):
+def get_ai_prompts(request: Request, session=Depends(get_session)):
     store = request.app.state.ai_config_store
     mode, custom = store.prompt_config()
-    return PromptConfigResponse(default_prompt=DEFAULT_SYSTEM_PROMPT, custom_prompt=custom, active=mode)
+    return PromptConfigResponse(
+        default_prompt=build_default_system_prompt(_relation_type_rows(session)),
+        custom_prompt=custom,
+        active=mode,
+    )
 
 
 @router.put("/ai-prompts", response_model=PromptConfigResponse)
-def update_ai_prompts(body: PromptConfigUpdate, request: Request):
+def update_ai_prompts(body: PromptConfigUpdate, request: Request, session=Depends(get_session)):
     store = request.app.state.ai_config_store
     store.update_prompt(mode=body.active, custom=body.custom_prompt)
     mode, custom = store.prompt_config()
-    return PromptConfigResponse(default_prompt=DEFAULT_SYSTEM_PROMPT, custom_prompt=custom, active=mode)
+    return PromptConfigResponse(
+        default_prompt=build_default_system_prompt(_relation_type_rows(session)),
+        custom_prompt=custom,
+        active=mode,
+    )

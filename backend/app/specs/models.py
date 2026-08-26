@@ -40,10 +40,10 @@ BUILTIN_CI_TYPES = [
     "kubernetes_workload",
 ]
 
-# 核心关系类型（业界 CMDB 常见关系清单：包含/安装/运行/托管/部署/归属/依赖/
-# 使用/连接/归属部门/管理/服务提供与消费/备份，中英文对照见前端 spec.ts）
+# 内置默认关系类型（种子清单的权威定义在 specs/relation_types.py；
+# 运行时关系类型存数据库可在设置页维护，此清单仅作校验回退与测试默认值）
 BUILTIN_RELATION_TYPES = [
-    "contains",
+    "contained_in",
     "mounted_in",
     "runs_on",
     "hosted_on",
@@ -107,9 +107,11 @@ class RelationSpec(BaseModel):
 
     @field_validator("type")
     @classmethod
-    def _known_relation(cls, value: str) -> str:
-        if value not in BUILTIN_RELATION_TYPES:
-            raise ValueError(f"未知关系类型：{value}")
+    def _type_format(cls, value: str) -> str:
+        # 关系类型可在设置页自定义：这里只做格式约束，
+        # 是否存在于注册表由 parse_and_validate 结合数据库清单校验
+        if not value or len(value) > 40 or not value.replace("_", "").isalnum() or value != value.lower():
+            raise ValueError(f"关系类型格式非法（应为小写字母数字下划线）：{value}")
         return value
 
 
@@ -217,8 +219,13 @@ def normalize_spec(spec: GenerationSpec) -> GenerationSpec:
     )
 
 
-def parse_and_validate(raw: dict) -> GenerationSpec:
-    """把外部（用户或 AI）JSON 转换为经过校验和规范化的 GenerationSpec。"""
+def parse_and_validate(raw: dict, allowed_relation_types: set[str] | None = None) -> GenerationSpec:
+    """把外部（用户或 AI）JSON 转换为经过校验和规范化的 GenerationSpec。
+
+    allowed_relation_types：运行时关系类型注册表（数据库）中的合法类型集合；
+    缺省回退到内置清单（测试与无库场景）。
+    """
+    allowed = allowed_relation_types if allowed_relation_types is not None else set(BUILTIN_RELATION_TYPES)
     try:
         spec = GenerationSpec.model_validate(raw)
     except SpecValidationError:
@@ -234,4 +241,9 @@ def parse_and_validate(raw: dict) -> GenerationSpec:
         if not errors:
             errors.append(str(exc))
         raise SpecValidationError(errors) from exc
+    unknown = [rel.type for rel in spec.relations if rel.type not in allowed]
+    if unknown:
+        raise SpecValidationError(
+            [f"未知关系类型：{value}（可在设置页的关系管理中添加）" for value in unknown]
+        )
     return normalize_spec(spec)

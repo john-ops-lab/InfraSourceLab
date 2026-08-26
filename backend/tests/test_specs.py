@@ -18,8 +18,8 @@ def base_spec(**overrides) -> dict:
             {"type": "rack", "count": 10},
         ],
         "relations": [
-            {"type": "contains", "from_type": "data_center", "to_type": "rack",
-             "strategy": "balanced", "coverage": "to"},
+            {"type": "contained_in", "from_type": "rack", "to_type": "data_center",
+             "strategy": "balanced", "coverage": "from"},
         ],
     }
     spec.update(overrides)

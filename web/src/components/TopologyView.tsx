@@ -35,7 +35,9 @@ import {
 } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
 import { api, ApiError, type TopologyData } from "@/lib/api"
+import { useRelationTypes } from "@/hooks/useRelationTypes"
 import {
+  DEFAULT_HIERARCHY_TYPES,
   ciTypeLabel,
   relationTypeLabel,
   type CIRecord,
@@ -52,33 +54,9 @@ const COLS = 12
 const ROW_GAP_Y = 90
 const LAYER_GAP_Y = 70
 
-// 建立层级的关系：to 一侧是父节点（如 physical_server mounted_in rack）
-const CHILD_TO_PARENT_TYPES = new Set([
-  "mounted_in",
-  "runs_on",
-  "hosted_on",
-  "deployed_on",
-  "belongs_to",
-])
-// from 一侧是父节点（如 data_center contains rack）
-const PARENT_TO_CHILD_TYPES = new Set(["contains"])
-// 其余关系（depends_on/uses/has_ip/connected_to/owned_by/manages/provides/consumes/backup_of）
-// 视为平级，不参与分层，仅绘制
-
-/**
- * 统一边的显示方向为「叶子 → 根」（布局叶在下、根在上，箭头一律向上）：
- * 层级关系中 from 是父的类型（如 contains）交换 source/target，其余保持原方向。
- */
-export function unifiedEdgeEndpoints(edge: {
-  type: string
-  from_id: string
-  to_id: string
-}): { source: string; target: string } {
-  if (PARENT_TO_CHILD_TYPES.has(edge.type)) {
-    return { source: edge.to_id, target: edge.from_id }
-  }
-  return { source: edge.from_id, target: edge.to_id }
-}
+// 建立层级的关系（direction=child_to_parent）由调用方从注册表传入：
+// 后端保证所有层级关系统一 from=子、to=父（如 rack contained_in data_center），
+// 平级关系（peer）不参与分层，仅绘制。
 
 interface TopologyNodeLike {
   id: string
@@ -108,23 +86,17 @@ function buildHierarchy(
   nodes: TopologyNodeLike[],
   edges: TopologyEdgeLike[],
   typeOrder: string[],
+  hierarchyTypes: ReadonlySet<string>,
 ): Hierarchy {
   const ids = new Set(nodes.map((node) => node.id))
   const parents = new Map<string, Set<string>>()
   const children = new Map<string, Set<string>>()
   for (const edge of edges) {
     if (!ids.has(edge.from_id) || !ids.has(edge.to_id)) continue
-    let parent: string
-    let child: string
-    if (CHILD_TO_PARENT_TYPES.has(edge.type)) {
-      parent = edge.to_id
-      child = edge.from_id
-    } else if (PARENT_TO_CHILD_TYPES.has(edge.type)) {
-      parent = edge.from_id
-      child = edge.to_id
-    } else {
-      continue
-    }
+    if (!hierarchyTypes.has(edge.type)) continue
+    // 层级关系统一 from=子、to=父
+    const parent = edge.to_id
+    const child = edge.from_id
     ;(parents.get(child) ?? parents.set(child, new Set()).get(child)!).add(parent)
     ;(children.get(parent) ?? children.set(parent, new Set()).get(parent)!).add(child)
   }
@@ -188,8 +160,9 @@ export function computeDepths(
   nodes: TopologyNodeLike[],
   edges: TopologyEdgeLike[],
   typeOrder: string[],
+  hierarchyTypes: ReadonlySet<string> = DEFAULT_HIERARCHY_TYPES,
 ): Map<string, number> {
-  return buildHierarchy(nodes, edges, typeOrder).depths
+  return buildHierarchy(nodes, edges, typeOrder, hierarchyTypes).depths
 }
 
 export interface DrilldownLayout {
@@ -213,8 +186,9 @@ export function computeDrilldownLayout(
   edges: TopologyEdgeLike[],
   typeOrder: string[],
   expandedIds: string[],
+  hierarchyTypes: ReadonlySet<string> = DEFAULT_HIERARCHY_TYPES,
 ): DrilldownLayout {
-  const { parents, children } = buildHierarchy(nodes, edges, typeOrder)
+  const { parents, children } = buildHierarchy(nodes, edges, typeOrder, hierarchyTypes)
   const expanded = new Set(expandedIds)
 
   // 可见性传播：从根出发，父可见且已展开则暴露子级
@@ -403,6 +377,17 @@ export function TopologyView({ datasetId, ciTypes, relationTypes }: TopologyView
   const [loading, setLoading] = useState(true)
   const [selectedCi, setSelectedCi] = useState<CIRecord | null>(null)
 
+  // 关系类型注册表：中英文对照与分层方向动态化；未加载时回退内置清单
+  const { registry } = useRelationTypes()
+  const hierarchyTypes = useMemo(() => {
+    if (registry.size === 0) return DEFAULT_HIERARCHY_TYPES
+    return new Set(
+      [...registry.values()]
+        .filter((row) => row.direction === "child_to_parent")
+        .map((row) => row.type),
+    )
+  }, [registry])
+
   const containerRef = useRef<HTMLDivElement>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
 
@@ -485,7 +470,7 @@ export function TopologyView({ datasetId, ciTypes, relationTypes }: TopologyView
     let positionMap: Map<string, { x: number; y: number }>
     if (center !== null) {
       // 聚焦邻居：后端返回全量邻域，分层网格布局，不启用钻取
-      const depths = buildHierarchy(data.nodes, data.edges, typeOrder).depths
+      const depths = buildHierarchy(data.nodes, data.edges, typeOrder, hierarchyTypes).depths
       const byDepth = new Map<number, TopologyNodeLike[]>()
       let maxDepth = 0
       for (const node of data.nodes) {
@@ -521,7 +506,7 @@ export function TopologyView({ datasetId, ciTypes, relationTypes }: TopologyView
       positionMap = positions
     } else {
       // 全量视图：钻取树形布局，默认仅顶层，点击节点逐层展开
-      const layout = computeDrilldownLayout(data.nodes, data.edges, typeOrder, expandedIds)
+      const layout = computeDrilldownLayout(data.nodes, data.edges, typeOrder, expandedIds, hierarchyTypes)
       positionMap = layout.positions
       const expandedSet = new Set(expandedIds)
       flowNodes = data.nodes
@@ -558,22 +543,21 @@ export function TopologyView({ datasetId, ciTypes, relationTypes }: TopologyView
     const flowEdges: Edge[] = data.edges
       .filter((edge) => nodeIds.has(edge.from_id) && nodeIds.has(edge.to_id))
       .map((edge) => {
-        // 统一显示方向：叶子→根（contains 等 from=父的类型交换端点，箭头一律向上）
-        const { source, target } = unifiedEdgeEndpoints(edge)
+        // 数据方向已统一为叶子→根（from=子、to=父），直接绘制，箭头一律向上
         const { sourceHandle, targetHandle } = anchorsFor(
-          positionMap.get(source),
-          positionMap.get(target),
+          positionMap.get(edge.from_id),
+          positionMap.get(edge.to_id),
         )
         return {
           id: edge.id,
-          source,
-          target,
+          source: edge.from_id,
+          target: edge.to_id,
           sourceHandle,
           targetHandle,
           // 正交折线（圆角）避免贝塞尔弧线穿越同层节点造成“同层互联”的误读
           type: "smoothstep",
           pathOptions: { borderRadius: 10 },
-          label: relationTypeLabel(edge.type, labelMode),
+          label: relationTypeLabel(edge.type, labelMode, registry),
           labelStyle: { fontSize: 10, fill: "#64748b" },
           labelBgStyle: { fill: "#f8fafc", fillOpacity: 0.9 },
           labelBgPadding: [4, 2],
@@ -587,7 +571,7 @@ export function TopologyView({ datasetId, ciTypes, relationTypes }: TopologyView
       visibleCount: flowNodes.length,
       totalCount: data.nodes.length,
     }
-  }, [data, typeOrder, typeColor, center, expandedIds, toggleNode, labelMode])
+  }, [data, typeOrder, typeColor, center, expandedIds, toggleNode, labelMode, hierarchyTypes, registry])
 
   const handleNodeClick: NodeMouseHandler = async (_event, node) => {
     try {
@@ -644,7 +628,7 @@ export function TopologyView({ datasetId, ciTypes, relationTypes }: TopologyView
             <SelectItem value="all">全部关系</SelectItem>
             {relationTypes.map((type) => (
               <SelectItem key={type} value={type}>
-                {relationTypeLabel(type, labelMode)}
+                {relationTypeLabel(type, labelMode, registry)}
               </SelectItem>
             ))}
           </SelectContent>

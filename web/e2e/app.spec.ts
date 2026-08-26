@@ -105,8 +105,40 @@ test("错误密码登录被拒绝", async ({ page }) => {
 test("API Key 会话不能修改 AI 建议服务配置（403）", async ({ page }) => {
   await login(page)
   await page.goto("/settings")
-  await expect(page.getByText(/需要管理员/)).toBeVisible()
+  await expect(page.getByText(/修改 AI 配置与提示词需要管理员/)).toBeVisible()
   await expect(page.getByLabel("Base URL")).toHaveCount(0)
+
+  // 关系类型列表 API Key 可读，但增删改需要管理员登录
+  await expect(page.getByText("关系类型管理", { exact: true })).toBeVisible()
+  await expect(page.getByRole("cell", { name: "contained_in", exact: true }).first()).toBeVisible()
+  await expect(page.getByText(/增删改需要管理员登录/)).toBeVisible()
+})
+
+test("管理员可在设置页维护关系类型：改名、新增、删除", async ({ page }) => {
+  await page.goto("/login")
+  await page.getByLabel("用户名").fill("admin")
+  await page.getByLabel("密码").fill("admin123")
+  await page.getByRole("button", { name: "登录" }).click()
+  await page.waitForURL(/\/create/)
+  await page.goto("/settings")
+
+  // 修改内置关系 runs_on 的中文名称
+  await page.getByRole("button", { name: "编辑 runs_on" }).click()
+  await page.getByLabel("runs_on 中文名称").fill("运行在")
+  await page.getByRole("button", { name: "保存 runs_on 的修改" }).click()
+  await expect(page.getByRole("cell", { name: "运行在" })).toBeVisible()
+
+  // 新增自定义关系 monitors
+  await page.getByRole("button", { name: "新增关系类型" }).click()
+  await page.getByLabel("类型标识").fill("monitors")
+  await page.getByLabel("中文名称").fill("监控")
+  await page.getByRole("button", { name: "保存新增" }).click()
+  await expect(page.getByRole("cell", { name: "monitors", exact: true }).first()).toBeVisible()
+
+  // 删除未被引用的自定义关系
+  await page.getByRole("button", { name: "删除 monitors" }).click()
+  await page.getByRole("button", { name: "删除", exact: true }).click()
+  await expect(page.getByRole("cell", { name: "monitors", exact: true })).toHaveCount(0)
 })
 
 test("拓扑路径：查看节点 → 点击详情 → 聚焦邻居", async ({ page }) => {
@@ -157,7 +189,7 @@ test("拓扑默认从顶层折叠，点击节点逐层展开", async ({ page }) 
       { type: "application", count: 2 },
     ],
     relations: [
-      { type: "contains", from_type: "data_center", to_type: "rack", strategy: "balanced", coverage: "to" },
+      { type: "contained_in", from_type: "rack", to_type: "data_center", strategy: "balanced", coverage: "from" },
       { type: "mounted_in", from_type: "physical_server", to_type: "rack", strategy: "balanced", coverage: "from" },
       { type: "runs_on", from_type: "virtual_machine", to_type: "physical_server", strategy: "balanced", coverage: "from" },
       { type: "hosted_on", from_type: "kubernetes_node", to_type: "virtual_machine", strategy: "balanced", coverage: "from" },

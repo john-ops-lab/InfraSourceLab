@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 
 from ..config import Settings
 from ..limits import MAX_AI_PROMPT_CHARS, MAX_AI_RESPONSE_BYTES
-from ..specs.models import BUILTIN_CI_TYPES, BUILTIN_RELATION_TYPES, SpecValidationError, parse_and_validate
+from ..specs.models import BUILTIN_CI_TYPES, SpecValidationError, parse_and_validate
 from .config import AIConfigStore
 
 logger = logging.getLogger("infrasourcelab.ai")
@@ -45,8 +45,9 @@ class AIProvider(Protocol):
     async def create_generation_spec(self, prompt: str) -> SpecProposal: ...
 
 
-# 系统默认提示词：公开导出供管理接口展示，可在 AI 建议服务中选择自定义提示词替换
-DEFAULT_SYSTEM_PROMPT = f"""你是 CMDB 测试数据生成工具 InfraSourceLab 的规格规划助手。
+# 系统默认提示词模板：关系清单与方向约定在运行时由关系类型注册表动态生成，
+# 公开导出供管理接口展示，可在 AI 建议服务中选择自定义提示词替换
+DEFAULT_SYSTEM_PROMPT_TEMPLATE = """你是 CMDB 测试数据生成工具 InfraSourceLab 的规格规划助手。
 用户会用自然语言描述需要的 CMDB 配置数据，你只输出一份 JSON，不输出任何其他文字。
 
 JSON 结构：
@@ -59,22 +60,44 @@ JSON 结构：
 GenerationSpec 规则：
 - name：数据集名称；description：简短说明；seed：整数种子。
 - ci_types：数组，每项 {{"type", "count"}}；type 只能从以下选择：
-  {", ".join(BUILTIN_CI_TYPES)}
+  {ci_types}
 - relations：数组，每项 {{"type", "from_type", "to_type", "strategy", "coverage"}}：
-  - type 只能从以下选择：{", ".join(BUILTIN_RELATION_TYPES)}
+  - type 只能从以下选择（格式为 标识符=中文名，方向 child_to_parent 表示 from=子、to=父，peer 表示平级）：
+{relation_types}
   - from_type 与 to_type 必须出现在 ci_types 中且数量大于 0
   - strategy 只能是 balanced 或 random_seeded
   - coverage 只能是 from（每个起点生成一条出边）或 to（每个终点生成一条入边）
-  - 常见搭配：data_center contains rack（coverage=to）；
+  - 常见搭配（注意层级关系一律从子级指向父级）：rack contained_in data_center（coverage=from）；
     physical_server mounted_in rack（coverage=from）；
     virtual_machine runs_on physical_server（coverage=from）；
-    application deployed_on virtual_machine 或 hosted_on virtual_machine（coverage=from）；
+    application deployed_on 或 hosted_on virtual_machine（coverage=from）；
     application uses database（coverage=to）；
-    network_device connected_to network_device（coverage=from）；
-    application owned_by department 类或业务归属可用 owned_by
+    network_device connected_to network_device（coverage=from）
 - 不要重复相同的关系规则；数量保持用户给出的值，未给出时给出合理小值。
 - 不要输出任何命令行、脚本、URL 或文件路径。
 """
+
+
+def build_default_system_prompt(relation_types: list[dict] | None = None) -> str:
+    """构建默认系统提示词：关系清单从注册表动态生成，缺省回退内置清单。"""
+    from ..specs.relation_types import DEFAULT_RELATION_TYPES
+
+    rows = relation_types or [
+        {"type": type_, "name_zh": zh, "name_en": en, "direction": direction}
+        for type_, zh, en, direction in DEFAULT_RELATION_TYPES
+    ]
+    lines = [
+        f"    {row['type']}={row.get('name_zh', row['type'])}（{row.get('direction', 'peer')}）"
+        for row in rows
+    ]
+    return DEFAULT_SYSTEM_PROMPT_TEMPLATE.format(
+        ci_types=", ".join(BUILTIN_CI_TYPES),
+        relation_types="\n".join(lines),
+    )
+
+
+# 兼容旧引用：无关系类型注册表时的静态默认提示词
+DEFAULT_SYSTEM_PROMPT = build_default_system_prompt()
 
 
 def _extract_json(content: str) -> dict:
@@ -133,9 +156,17 @@ def _extract_json(content: str) -> dict:
 class OpenAICompatibleProvider:
     """通过 /chat/completions 调用 OpenAI 兼容服务。配置优先读运行时存储。"""
 
-    def __init__(self, settings: Settings, config_store: "AIConfigStore | None" = None):
+    def __init__(
+        self,
+        settings: Settings,
+        config_store: "AIConfigStore | None" = None,
+        relation_types_loader: "callable | None" = None,
+    ):
         self._settings = settings
         self._config_store = config_store
+        # 关系类型注册表读取器：返回 [{type, name_zh, name_en, direction}]，
+        # 供默认提示词动态生成关系清单与 spec 校验
+        self._relation_types_loader = relation_types_loader
 
     def _resolve_config(self):
         if self._config_store is not None:
@@ -151,14 +182,24 @@ class OpenAICompatibleProvider:
 
         return _Static()
 
+    def _current_relation_types(self) -> list[dict]:
+        """读取关系类型注册表；读取失败时回退内置清单。"""
+        if self._relation_types_loader is None:
+            return []
+        try:
+            return list(self._relation_types_loader())
+        except Exception:  # 注册表读取失败不应阻断 AI 建议
+            logger.exception("读取关系类型注册表失败，提示词回退内置清单。")
+            return []
+
     def _system_prompt(self) -> str:
-        """系统提示词：默认用内置模板，可在 AI 建议服务中选择自定义提示词。"""
+        """系统提示词：默认用内置模板（关系清单动态生成），可自定义替换。"""
         if self._config_store is None:
-            return DEFAULT_SYSTEM_PROMPT
+            return build_default_system_prompt(self._current_relation_types())
         mode, custom = self._config_store.prompt_config()
         if mode == "custom" and custom.strip():
             return custom.strip()
-        return DEFAULT_SYSTEM_PROMPT
+        return build_default_system_prompt(self._current_relation_types())
 
     async def _request(self, method: str, path: str, payload: dict | None = None):
         """统一的 OpenAI 兼容请求入口，负责超时/连接/状态码错误归一。"""
@@ -283,7 +324,9 @@ class OpenAICompatibleProvider:
         if not isinstance(raw_spec, dict):
             raise AIProviderError("AI 返回中缺少 spec 字段。")
         try:
-            spec = parse_and_validate(raw_spec)
+            relation_rows = self._current_relation_types()
+            allowed = {row["type"] for row in relation_rows} if relation_rows else None
+            spec = parse_and_validate(raw_spec, allowed_relation_types=allowed)
         except SpecValidationError as exc:
             raise AIProviderError("AI 返回的规格未通过服务端校验：" + "；".join(exc.errors)) from exc
 

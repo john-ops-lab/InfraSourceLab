@@ -13,6 +13,7 @@ import {
   UserRound,
 } from "lucide-react"
 import { AIServicePanel } from "@/components/AIServicePanel"
+import { RelationTypesPanel } from "@/components/RelationTypesPanel"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -292,6 +293,8 @@ export default function SettingsPage() {
           )}
         </CardContent>
       </Card>
+
+      <RelationTypesPanel />
 
       <AIServicePanel />
 

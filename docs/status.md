@@ -190,6 +190,46 @@ runs_on 边渲染断言）；容器（8093）重建后以数据集 #2（96 CI，
 关系下拉对照名、新关系类型 spec 生成
 （证据见 `.verify-evidence/label-*.png`）。
 
+### 关系类型注册表：contained_in 语义修正 + 设置页关系管理（本地，未同步 GitHub）
+
+第六轮试用反馈（机柜到数据中心应是「包含于」、英文也不对、AI 提示词同步修正；
+设置页增加关系管理）两项修复。核心决策：contains 的语义与数据显示方向
+（rack→dc，即「机柜包含于数据中心」）矛盾，不是改文案而是彻底统一约定——
+**所有层级关系统一 from=子、to=父**，contains 整体替换为 contained_in，
+关系类型从硬编码升级为数据库注册表：
+
+- **后端注册表与迁移**：新增 `RelationType` 表（type 主键/name_zh/name_en/
+  direction/is_builtin），启动时种入 15 种内置关系（首项 contained_in 替代 contains，
+  `AppSetting` 标记防删后重种）；`migrate_contains_to_contained_in` 幂等迁移两处存量：
+  关系实例表（type 改写 + from/to 互换，撞唯一约束时丢弃源行）与数据集规格 JSON
+  （type/from_type/to_type 互换 + coverage 翻转，端点互换后覆盖语义随之反转）；
+- **动态校验与提示词**：`parse_and_validate` 新增 `allowed_relation_types` 参数，
+  RelationSpec 字段只校验格式，是否注册由调用方传注册表清单；
+  `build_default_system_prompt(relation_types)` 动态构建 AI 系统提示词
+  （关系清单格式 `type=中文名（direction）`，常见搭配改为
+  `rack contained_in data_center（coverage=from）`），改名后提示词同步变化；
+- **关系类型 API**：`GET /api/v1/relation-types` 登录会话可读；
+  `POST/PUT/DELETE /api/v1/admin/relation-types` 仅管理员会话
+  （删除被数据集规格引用的类型返回 409）；
+- **前端动态化**：`useRelationTypes` 共享 hook（模块级缓存 + 增删改后失效）；
+  `relationTypeLabel` 支持注册表覆盖中英文名称；TopologyView 分层集合改由注册表
+  direction 动态构建（自定义层级类型自动参与分层），删除 `unifiedEdgeEndpoints`
+  （数据方向已统一，边直接 from→to 绘制）；SpecEditor 关系下拉、
+  数据集详情页关系列表/筛选/规格展示全部接注册表；
+- **设置页「关系类型管理」卡片**：表格列出类型标识/中文名/英文名/方向/内置标记，
+  行内编辑改名改方向、新增自定义类型（格式校验与后端一致）、
+  删除带确认弹窗（被引用时展示 409 详情）。
+
+验证：后端 103 passed（新增 7 条：种子/CRUD 回路/删除引用保护/自定义类型
+spec 接受/迁移幂等/动态提示词/回退）；Vitest 24 passed（unifiedEdgeEndpoints
+测试删除，新增注册表覆盖与自定义分层类型测试）；Playwright 12 passed
+（新增管理员维护关系类型闭环，旧用例改精确断言）；容器（8093）重建验证：
+isl-i2-data 卷中 3 个旧数据集的 12 条 contains 关系实例与 3 条规格条目
+启动时自动迁移（rack contained_in data_center，coverage from，幂等重
+启零改动），浏览器取证 13 项全过（证据见 `/tmp/isl-relation-evidence/`）。
+排查中发现迁移首版遗漏 coverage 翻转（to 未变 from，覆盖语义从「每个机柜
+都有归属」退化为「每个数据中心至少被包含一次」），已修复并补断言。
+
 ### Issues #3～#8：不计划实施
 
 这些早期平台化方向已经关闭，不属于当前待办：

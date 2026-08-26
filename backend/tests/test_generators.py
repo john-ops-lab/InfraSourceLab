@@ -69,19 +69,19 @@ def test_coverage_from_gives_every_source_one_edge():
 def test_coverage_to_gives_every_target_one_edge():
     raw = make_spec(
         ci_types=[
-            {"type": "data_center", "count": 3},
-            {"type": "rack", "count": 25},
+            {"type": "application", "count": 25},
+            {"type": "database", "count": 3},
         ],
         relations=[
-            {"type": "contains", "from_type": "data_center", "to_type": "rack",
+            {"type": "uses", "from_type": "application", "to_type": "database",
              "strategy": "random_seeded", "coverage": "to"},
         ],
     )
     result = generate_dataset(parse_and_validate(raw))
     targets = {rel.to_id for rel in result.relations}
-    rack_ids = {ci.id for ci in result.cis if ci.type == "rack"}
-    assert targets == rack_ids
-    assert len(result.relations) == 25
+    db_ids = {ci.id for ci in result.cis if ci.type == "database"}
+    assert targets == db_ids
+    assert len(result.relations) == 3
 
 
 def test_balanced_distributes_evenly():
@@ -91,15 +91,15 @@ def test_balanced_distributes_evenly():
             {"type": "rack", "count": 10},
         ],
         relations=[
-            {"type": "contains", "from_type": "data_center", "to_type": "rack",
-             "strategy": "balanced", "coverage": "to"},
+            {"type": "contained_in", "from_type": "rack", "to_type": "data_center",
+             "strategy": "balanced", "coverage": "from"},
         ],
     )
     result = generate_dataset(parse_and_validate(raw))
-    per_source = {}
+    per_target = {}
     for rel in result.relations:
-        per_source[rel.from_id] = per_source.get(rel.from_id, 0) + 1
-    assert sorted(per_source.values()) == [5, 5]
+        per_target[rel.to_id] = per_target.get(rel.to_id, 0) + 1
+    assert sorted(per_target.values()) == [5, 5]
 
 
 def test_no_self_loops_for_same_type_relation():

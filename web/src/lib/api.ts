@@ -181,6 +181,20 @@ export interface TopologyData {
   node_limit: number
 }
 
+export interface RelationTypeInfo {
+  type: string
+  name_zh: string
+  name_en: string
+  direction: "child_to_parent" | "peer"
+  is_builtin: boolean
+}
+
+export interface RelationTypePayload {
+  name_zh: string
+  name_en: string
+  direction: "child_to_parent" | "peer"
+}
+
 export const api = {
   status: () =>
     request<{ ai_configured: boolean; default_api_key: string }>("/api/v1/status"),
@@ -235,6 +249,34 @@ export const api = {
 
   getAIPrompts: () =>
     request<AIPromptConfig>("/api/v1/admin/ai-prompts", {}, undefined, false),
+
+  // 关系类型注册表：拓扑/编辑器读对照名，设置页管理员维护
+  getRelationTypes: () =>
+    request<RelationTypeInfo[]>("/api/v1/relation-types", {}, undefined, false),
+
+  createRelationType: (payload: RelationTypePayload & { type: string }) =>
+    request<RelationTypeInfo>(
+      "/api/v1/admin/relation-types",
+      { method: "POST", body: JSON.stringify(payload) },
+      undefined,
+      false,
+    ),
+
+  updateRelationType: (type: string, payload: RelationTypePayload) =>
+    request<RelationTypeInfo>(
+      `/api/v1/admin/relation-types/${encodeURIComponent(type)}`,
+      { method: "PUT", body: JSON.stringify(payload) },
+      undefined,
+      false,
+    ),
+
+  deleteRelationType: (type: string) =>
+    request<void>(
+      `/api/v1/admin/relation-types/${encodeURIComponent(type)}`,
+      { method: "DELETE" },
+      undefined,
+      false,
+    ),
 
   updateAIPrompts: (payload: { active: "default" | "custom"; custom_prompt?: string }) =>
     request<AIPromptConfig>(
