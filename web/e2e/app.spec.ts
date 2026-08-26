@@ -139,13 +139,13 @@ test("拓扑路径：查看节点 → 点击详情 → 聚焦邻居", async ({ p
   await expect(page.getByText(/正在聚焦节点/)).not.toBeVisible()
 })
 
-test("拓扑超过 6 层时第 7 层起默认折叠，可展开与重新折叠", async ({ page }) => {
+test("拓扑默认从顶层折叠，点击节点逐层展开", async ({ page }) => {
   await login(page)
 
   // 直接通过 API 构造 7 层数据集：dc > rack > server > vm > k8s_node > k8s_workload > app
   const spec = {
-    name: "e2e-7layers",
-    description: "七层链路用于验证深层折叠",
+    name: "e2e-drilldown",
+    description: "七层链路用于验证钻取式展开",
     seed: 7,
     ci_types: [
       { type: "data_center", count: 1 },
@@ -166,7 +166,7 @@ test("拓扑超过 6 层时第 7 层起默认折叠，可展开与重新折叠",
     ],
   }
   const created = await page.request.post("/api/v1/datasets", {
-    data: { spec, prompt: "e2e 七层折叠" },
+    data: { spec, prompt: "e2e 钻取展开" },
     headers: { Authorization: "Bearer e2e-test-key" },
   })
   expect(created.ok()).toBeTruthy()
@@ -175,21 +175,43 @@ test("拓扑超过 6 层时第 7 层起默认折叠，可展开与重新折叠",
   await page.goto(`/datasets/${datasetId}`)
   await page.getByRole("tab", { name: "拓扑" }).click()
 
-  // 默认折叠：第 7 层（application）不显示，出现折叠提示与占位块
-  // 共 15 个 CI：可见 13 + 折叠占位块 1 = 14
-  await expect(page.getByText(/第 7~7 层共 2 个节点已折叠/)).toBeVisible()
-  const collapsedNode = page.locator(".react-flow__node", { hasText: "已折叠第 7~7 层" })
-  await expect(collapsedNode).toBeVisible()
-  await expect(page.locator(".react-flow__node")).toHaveCount(14)
+  const nodes = page.locator(".react-flow__node")
 
-  // 点击占位块展开：全部 15 个节点出现
-  await collapsedNode.click()
-  await expect(page.locator(".react-flow__node")).toHaveCount(15)
-  await expect(page.getByText(/第 7~7 层/)).not.toBeVisible()
+  // 默认只显示顶层根节点（1 个数据中心），提示逐层展开
+  await expect(page.getByText(/请点击节点上的 \+ 逐层展开查看/)).toBeVisible()
+  await expect(nodes).toHaveCount(1)
 
-  // 重新折叠入口可用
-  await page.getByRole("button", { name: /折叠第 7 层以下/ }).click()
-  await expect(page.getByText(/第 7~7 层共 2 个节点已折叠/)).toBeVisible()
+  // 点击根节点的 + 展开机柜层
+  await nodes.getByRole("button").first().click()
+  await expect(nodes).toHaveCount(3)
+
+  // 点击机柜 rack-0001 的 + 展开其服务器（balanced：每机柜 1 台）
+  await page.locator(".react-flow__node", { hasText: "rack-0001" }).getByRole("button").click()
+  await expect(nodes).toHaveCount(4)
+
+  // 点击 server-0001 的 + 展开其虚拟机：子树聚簇，VM 紧贴宿主机正下方直连
+  await page
+    .locator(".react-flow__node", { hasText: "server-0001" })
+    .getByRole("button")
+    .click()
+  await expect(nodes).toHaveCount(6)
+  // 连线正常绘制：其 2 台 VM 各有一条 runs_on 边直连宿主机（自定义节点需渲染 Handle）
+  await expect(
+    page.locator(".react-flow__edge").filter({ hasText: "runs_on" }),
+  ).toHaveCount(2)
+  const serverBox = await page
+    .locator(".react-flow__node", { hasText: "server-0001" })
+    .boundingBox()
+  const vmBox = await page.locator(".react-flow__node", { hasText: "vm-0001" }).boundingBox()
+  expect(vmBox!.y).toBeGreaterThan(serverBox!.y)
+
+  // 展开进度提示：当前显示 6 / 15
+  await expect(page.getByText(/当前显示 6 \/ 15 个节点/)).toBeVisible()
+
+  // 收起全部回到顶层
+  await page.getByRole("button", { name: "收起全部" }).click()
+  await expect(nodes).toHaveCount(1)
+  await expect(page.getByText(/请点击节点上的 \+ 逐层展开查看/)).toBeVisible()
 })
 
 test("拓扑全屏按钮进入与退出全屏", async ({ page }) => {
