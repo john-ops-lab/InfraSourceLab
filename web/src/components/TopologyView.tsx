@@ -35,7 +35,13 @@ import {
 } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
 import { api, ApiError, type TopologyData } from "@/lib/api"
-import { ciTypeLabel, type CIRecord, type CITypeEntry } from "@/lib/spec"
+import {
+  ciTypeLabel,
+  relationTypeLabel,
+  type CIRecord,
+  type CITypeEntry,
+  type RelationLabelMode,
+} from "@/lib/spec"
 
 // 钻取树形布局几何参数：父节点水平居中于子级上方，子树聚簇
 // （CMDB 拓扑实践：虚拟机等子级紧贴其宿主机下方，连线短且直，避免跨层横穿造成误读）
@@ -47,10 +53,32 @@ const ROW_GAP_Y = 90
 const LAYER_GAP_Y = 70
 
 // 建立层级的关系：to 一侧是父节点（如 physical_server mounted_in rack）
-const CHILD_TO_PARENT_TYPES = new Set(["mounted_in", "runs_on", "hosted_on", "belongs_to"])
+const CHILD_TO_PARENT_TYPES = new Set([
+  "mounted_in",
+  "runs_on",
+  "hosted_on",
+  "deployed_on",
+  "belongs_to",
+])
 // from 一侧是父节点（如 data_center contains rack）
 const PARENT_TO_CHILD_TYPES = new Set(["contains"])
-// 其余关系（depends_on/uses/has_ip）视为平级，不参与分层，仅绘制
+// 其余关系（depends_on/uses/has_ip/connected_to/owned_by/manages/provides/consumes/backup_of）
+// 视为平级，不参与分层，仅绘制
+
+/**
+ * 统一边的显示方向为「叶子 → 根」（布局叶在下、根在上，箭头一律向上）：
+ * 层级关系中 from 是父的类型（如 contains）交换 source/target，其余保持原方向。
+ */
+export function unifiedEdgeEndpoints(edge: {
+  type: string
+  from_id: string
+  to_id: string
+}): { source: string; target: string } {
+  if (PARENT_TO_CHILD_TYPES.has(edge.type)) {
+    return { source: edge.to_id, target: edge.from_id }
+  }
+  return { source: edge.from_id, target: edge.to_id }
+}
 
 interface TopologyNodeLike {
   id: string
@@ -368,6 +396,8 @@ export function TopologyView({ datasetId, ciTypes, relationTypes }: TopologyView
   const [center, setCenter] = useState<string | null>(null)
   // 已展开节点（有序：多父共享子时归属最早展开的父）
   const [expandedIds, setExpandedIds] = useState<string[]>([])
+  // 关系标签展示模式：中文 / 英文 / 中英对照（作用于边标签与关系筛选下拉）
+  const [labelMode, setLabelMode] = useState<RelationLabelMode>("both")
 
   const [data, setData] = useState<TopologyData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -510,7 +540,7 @@ export function TopologyView({ datasetId, ciTypes, relationTypes }: TopologyView
 
     const nodeIds = new Set(flowNodes.map((node) => node.id))
     // 锚点按两端节点的布局位置就近选择：上节点从底部出线、下节点从顶部入线，
-    // 同层平级用左右；箭头统一指向下方（或右侧）节点，连线始终是短正交折线
+    // 同层平级用左右；配合统一的叶→根方向，箭头一律指向在上的根/父节点
     const anchorsFor = (
       fromPos: { x: number; y: number } | undefined,
       toPos: { x: number; y: number } | undefined,
@@ -528,20 +558,22 @@ export function TopologyView({ datasetId, ciTypes, relationTypes }: TopologyView
     const flowEdges: Edge[] = data.edges
       .filter((edge) => nodeIds.has(edge.from_id) && nodeIds.has(edge.to_id))
       .map((edge) => {
+        // 统一显示方向：叶子→根（contains 等 from=父的类型交换端点，箭头一律向上）
+        const { source, target } = unifiedEdgeEndpoints(edge)
         const { sourceHandle, targetHandle } = anchorsFor(
-          positionMap.get(edge.from_id),
-          positionMap.get(edge.to_id),
+          positionMap.get(source),
+          positionMap.get(target),
         )
         return {
           id: edge.id,
-          source: edge.from_id,
-          target: edge.to_id,
+          source,
+          target,
           sourceHandle,
           targetHandle,
           // 正交折线（圆角）避免贝塞尔弧线穿越同层节点造成“同层互联”的误读
           type: "smoothstep",
           pathOptions: { borderRadius: 10 },
-          label: edge.type,
+          label: relationTypeLabel(edge.type, labelMode),
           labelStyle: { fontSize: 10, fill: "#64748b" },
           labelBgStyle: { fill: "#f8fafc", fillOpacity: 0.9 },
           labelBgPadding: [4, 2],
@@ -555,7 +587,7 @@ export function TopologyView({ datasetId, ciTypes, relationTypes }: TopologyView
       visibleCount: flowNodes.length,
       totalCount: data.nodes.length,
     }
-  }, [data, typeOrder, typeColor, center, expandedIds, toggleNode])
+  }, [data, typeOrder, typeColor, center, expandedIds, toggleNode, labelMode])
 
   const handleNodeClick: NodeMouseHandler = async (_event, node) => {
     try {
@@ -567,7 +599,7 @@ export function TopologyView({ datasetId, ciTypes, relationTypes }: TopologyView
   }
 
   // 数据或钻取状态变化时重新挂载以重新适配视图
-  const flowKey = `${ciType}|${relationType}|${appliedQuery}|${center ?? ""}|${expandedIds.join(",")}`
+  const flowKey = `${ciType}|${relationType}|${appliedQuery}|${center ?? ""}|${expandedIds.join(",")}|${labelMode}`
 
   return (
     <div className="space-y-3">
@@ -612,9 +644,19 @@ export function TopologyView({ datasetId, ciTypes, relationTypes }: TopologyView
             <SelectItem value="all">全部关系</SelectItem>
             {relationTypes.map((type) => (
               <SelectItem key={type} value={type}>
-                {type}
+                {relationTypeLabel(type, labelMode)}
               </SelectItem>
             ))}
+          </SelectContent>
+        </Select>
+        <Select value={labelMode} onValueChange={(value) => setLabelMode(value as RelationLabelMode)}>
+          <SelectTrigger className="w-36" aria-label="关系标签语言">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="both">中英对照</SelectItem>
+            <SelectItem value="zh">中文</SelectItem>
+            <SelectItem value="en">英文</SelectItem>
           </SelectContent>
         </Select>
         <div className="relative min-w-48 flex-1">

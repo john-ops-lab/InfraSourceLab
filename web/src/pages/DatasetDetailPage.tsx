@@ -45,6 +45,7 @@ import { api, ApiError, type DatasetDetail } from "@/lib/api"
 import {
   ciTypeLabel,
   formatRelation,
+  relationTypeLabel,
   type CIRecord,
   type DatasetSummary,
   type Paged,
@@ -426,7 +427,7 @@ export default function DatasetDetailPage() {
                     <TableRow key={relation.id}>
                       <TableCell className="font-mono text-xs">{relation.id}</TableCell>
                       <TableCell>
-                        <Badge variant="outline">{relation.type}</Badge>
+                        <Badge variant="outline">{relationTypeLabel(relation.type)}</Badge>
                       </TableCell>
                       <TableCell>
                         <div className="font-medium">{relation.from_name}</div>

@@ -110,15 +110,34 @@ export const CI_TYPE_LABELS: Record<string, string> = {
   kubernetes_workload: "Kubernetes 工作负载",
 }
 
+// 关系类型中文对照（口径与后端 BUILTIN_RELATION_TYPES 一致，
+// 覆盖业界 CMDB 常见关系：包含/安装/运行/托管/部署/归属/依赖/使用/连接/管理/服务提供与消费/备份）
 export const RELATION_TYPE_LABELS: Record<string, string> = {
-  contains: "包含（contains）",
-  mounted_in: "安装于（mounted_in）",
-  runs_on: "运行于（runs_on）",
-  hosted_on: "承载于（hosted_on）",
-  belongs_to: "属于（belongs_to）",
-  depends_on: "依赖（depends_on）",
-  uses: "使用（uses）",
-  has_ip: "拥有 IP（has_ip）",
+  contains: "包含",
+  mounted_in: "安装于",
+  runs_on: "运行于",
+  hosted_on: "托管于",
+  deployed_on: "部署于",
+  belongs_to: "隶属于",
+  depends_on: "依赖于",
+  uses: "使用",
+  has_ip: "拥有 IP",
+  connected_to: "连接至",
+  owned_by: "归属于",
+  manages: "管理",
+  provides: "提供服务",
+  consumes: "消费服务",
+  backup_of: "备份于",
+}
+
+// 关系标签展示模式：中文 / 英文 / 中英对照（如 runs_on(运行于)）
+export type RelationLabelMode = "zh" | "en" | "both"
+
+export function relationTypeLabel(type: string, mode: RelationLabelMode = "both"): string {
+  const zh = RELATION_TYPE_LABELS[type]
+  if (mode === "en" || !zh) return type
+  if (mode === "zh") return zh
+  return `${type}(${zh})`
 }
 
 export const DEFECT_KIND_LABELS: Record<DefectKind, string> = {

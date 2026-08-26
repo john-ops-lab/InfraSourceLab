@@ -15,6 +15,7 @@ import {
   DEFECT_KIND_LABELS,
   RELATION_TYPE_LABELS,
   ciTypeLabel,
+  relationTypeLabel,
   totalCiCount,
   type DefectKind,
   type GenerationSpec,
@@ -191,9 +192,9 @@ export function SpecEditor({ spec, onChange, disabled }: SpecEditorProps) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.entries(RELATION_TYPE_LABELS).map(([value, label]) => (
+                  {Object.keys(RELATION_TYPE_LABELS).map((value) => (
                     <SelectItem key={value} value={value}>
-                      {label}
+                      {relationTypeLabel(value)}
                     </SelectItem>
                   ))}
                 </SelectContent>

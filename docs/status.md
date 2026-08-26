@@ -165,6 +165,31 @@ runs_on 边渲染断言）；容器（8093）重建后以数据集 #2（96 CI，
 带状区间（越界 0 条），runs_on 箭头 3/3 指向宿主机底部锚点
 （证据见 `.verify-evidence/anchor-*.png`）。
 
+### 拓扑关系方向统一 + 中英对照 + 关系类型配全（本地，未同步 GitHub）
+
+第五轮试用反馈（关系方向不统一、要中英对照可选、关系类型配全）三项修复：
+
+- **方向统一为叶→根**：新增 `unifiedEdgeEndpoints`（导出供单测）：层级关系中
+  from 是父的类型（contains）交换 source/target，其余保持原方向；配合
+  按布局就近选锚点，箭头一律自下而上指向根/父节点，消除「contains 向下、
+  mounted_in 向上」的方向混杂；
+- **关系中英对照三态**：`spec.ts` 新增 `relationTypeLabel(type, mode)`
+  （zh/en/both，如 `runs_on(运行于)`）与纯中文对照表；拓扑工具栏新增
+  「关系标签语言」选择器（中英对照/中文/英文），作用于边标签与关系筛选下拉；
+  SpecEditor 关系下拉与关系页签 Badge 同步改用中英对照；
+- **关系类型配全**（参照维易 CMDB/ManageEngine/CI 关系图业界清单）：
+  `BUILTIN_RELATION_TYPES` 8→15 种，新增 deployed_on（部署于）、
+  connected_to（连接至）、owned_by（归属于）、manages（管理）、
+  provides（提供服务）、consumes（消费服务）、backup_of（备份于）；
+  拓扑分层同步（deployed_on 参与分层，其余新类型为平级）；AI 提示词的
+  类型清单动态引用自动生效并补充常见搭配示例。
+
+验证：后端 96 passed（新增全类型校验用例）；Vitest 22 passed（新增方向归一
+与三态标签单测）；Playwright 11 passed；容器（8093）重建后取证 8 项全过：
+默认中英对照标签、三态切换、无探线、contains 箭头向上 3/3、
+关系下拉对照名、新关系类型 spec 生成
+（证据见 `.verify-evidence/label-*.png`）。
+
 ### Issues #3～#8：不计划实施
 
 这些早期平台化方向已经关闭，不属于当前待办：

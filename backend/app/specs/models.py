@@ -40,16 +40,24 @@ BUILTIN_CI_TYPES = [
     "kubernetes_workload",
 ]
 
-# 核心关系类型
+# 核心关系类型（业界 CMDB 常见关系清单：包含/安装/运行/托管/部署/归属/依赖/
+# 使用/连接/归属部门/管理/服务提供与消费/备份，中英文对照见前端 spec.ts）
 BUILTIN_RELATION_TYPES = [
     "contains",
     "mounted_in",
     "runs_on",
     "hosted_on",
+    "deployed_on",
     "belongs_to",
     "depends_on",
     "uses",
     "has_ip",
+    "connected_to",
+    "owned_by",
+    "manages",
+    "provides",
+    "consumes",
+    "backup_of",
 ]
 
 RelationStrategy = Literal["balanced", "random_seeded"]

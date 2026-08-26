@@ -68,8 +68,10 @@ GenerationSpec 规则：
   - 常见搭配：data_center contains rack（coverage=to）；
     physical_server mounted_in rack（coverage=from）；
     virtual_machine runs_on physical_server（coverage=from）；
-    application hosted_on virtual_machine（coverage=from）；
-    application uses database（coverage=to）
+    application deployed_on virtual_machine 或 hosted_on virtual_machine（coverage=from）；
+    application uses database（coverage=to）；
+    network_device connected_to network_device（coverage=from）；
+    application owned_by department 类或业务归属可用 owned_by
 - 不要重复相同的关系规则；数量保持用户给出的值，未给出时给出合理小值。
 - 不要输出任何命令行、脚本、URL 或文件路径。
 """

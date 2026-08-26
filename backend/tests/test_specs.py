@@ -2,7 +2,11 @@
 
 import pytest
 
-from app.specs.models import SpecValidationError, parse_and_validate
+from app.specs.models import (
+    BUILTIN_RELATION_TYPES,
+    SpecValidationError,
+    parse_and_validate,
+)
 
 
 def base_spec(**overrides) -> dict:
@@ -26,6 +30,26 @@ def test_valid_spec_passes():
     spec = parse_and_validate(base_spec())
     assert spec.name == "测试数据集"
     assert len(spec.relations) == 1
+
+
+def test_all_builtin_relation_types_accepted():
+    """全部内置关系类型（含扩充的 connected_to/owned_by 等）均能通过校验并参与生成。"""
+    raw = {
+        "name": "全关系类型",
+        "seed": 7,
+        "ci_types": [
+            {"type": "data_center", "count": 1},
+            {"type": "rack", "count": 2},
+        ],
+        "relations": [
+            {"type": rel_type, "from_type": from_type, "to_type": to_type,
+             "strategy": "balanced", "coverage": "from"}
+            for rel_type in BUILTIN_RELATION_TYPES
+            for from_type, to_type in [("rack", "data_center")]
+        ],
+    }
+    spec = parse_and_validate(raw)
+    assert len(spec.relations) == len(BUILTIN_RELATION_TYPES)
 
 
 def test_unknown_ci_type_rejected():

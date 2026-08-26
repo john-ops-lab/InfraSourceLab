@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
-import { computeDepths, computeDrilldownLayout } from "@/components/TopologyView"
+import { computeDepths, computeDrilldownLayout, unifiedEdgeEndpoints } from "@/components/TopologyView"
+import { RELATION_TYPE_LABELS, relationTypeLabel } from "@/lib/spec"
 
 const TYPE_ORDER = [
   "data_center",
@@ -17,6 +18,63 @@ function node(id: string, type: string) {
 function edge(id: string, type: string, from: string, to: string) {
   return { id, type, from_id: from, to_id: to }
 }
+
+describe("unifiedEdgeEndpoints", () => {
+  it("contains 的显示方向反转为子→父，其余层级关系保持原方向，箭头一律向上", () => {
+    // contains：from=父(dc) 在上，反转后 source=子(rack)→target=父(dc)，箭头向上
+    expect(unifiedEdgeEndpoints(edge("e1", "contains", "dc-1", "rack-1"))).toEqual({
+      source: "rack-1",
+      target: "dc-1",
+    })
+    // runs_on/mounted_in/deployed_on：from=子 在下，方向不变
+    expect(unifiedEdgeEndpoints(edge("e2", "runs_on", "vm-1", "server-1"))).toEqual({
+      source: "vm-1",
+      target: "server-1",
+    })
+    expect(unifiedEdgeEndpoints(edge("e3", "mounted_in", "server-1", "rack-1"))).toEqual({
+      source: "server-1",
+      target: "rack-1",
+    })
+    expect(unifiedEdgeEndpoints(edge("e4", "deployed_on", "app-1", "vm-1"))).toEqual({
+      source: "app-1",
+      target: "vm-1",
+    })
+    // 平级关系（uses 等）不反转
+    expect(unifiedEdgeEndpoints(edge("e5", "uses", "app-1", "db-1"))).toEqual({
+      source: "app-1",
+      target: "db-1",
+    })
+  })
+})
+
+describe("relationTypeLabel", () => {
+  it("三种展示模式：中英对照 / 中文 / 英文，未知类型回退原文", () => {
+    expect(relationTypeLabel("runs_on")).toBe("runs_on(运行于)")
+    expect(relationTypeLabel("runs_on", "zh")).toBe("运行于")
+    expect(relationTypeLabel("runs_on", "en")).toBe("runs_on")
+    expect(relationTypeLabel("mystery")).toBe("mystery")
+  })
+
+  it("对照表覆盖后端 BUILTIN_RELATION_TYPES 全部 15 种关系类型", () => {
+    expect(Object.keys(RELATION_TYPE_LABELS).sort()).toEqual([
+      "backup_of",
+      "belongs_to",
+      "connected_to",
+      "consumes",
+      "contains",
+      "depends_on",
+      "deployed_on",
+      "has_ip",
+      "hosted_on",
+      "manages",
+      "mounted_in",
+      "owned_by",
+      "provides",
+      "runs_on",
+      "uses",
+    ])
+  })
+})
 
 describe("computeDepths", () => {
   it("按真实关系分层：contains 向下、mounted_in/runs_on/hosted_on 向上归一为父在上", () => {
