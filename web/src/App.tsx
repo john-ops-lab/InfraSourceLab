@@ -1,11 +1,10 @@
 import { useEffect, type ReactNode } from "react"
 import { BrowserRouter, NavLink, Navigate, Route, Routes, useNavigate } from "react-router-dom"
-import { Bot, Database, Plus, Settings } from "lucide-react"
+import { Database, Plus, Settings } from "lucide-react"
 import { Toaster } from "@/components/ui/sonner"
 import { toast } from "sonner"
 import { getSessionUser, hasSession, onUnauthorized } from "@/lib/api"
 import { cn } from "@/lib/utils"
-import AIConfigPage from "@/pages/AIConfigPage"
 import CreatePage from "@/pages/CreatePage"
 import DatasetsPage from "@/pages/DatasetsPage"
 import DatasetDetailPage from "@/pages/DatasetDetailPage"
@@ -54,10 +53,6 @@ function Layout({ children }: { children: ReactNode }) {
               <Database className="size-4" aria-hidden />
               数据集列表
             </NavLink>
-            <NavLink to="/settings/ai" className={navClassName}>
-              <Bot className="size-4" aria-hidden />
-              AI 配置
-            </NavLink>
             <NavLink to="/settings" className={navClassName}>
               <Settings className="size-4" aria-hidden />
               设置
@@ -90,7 +85,6 @@ export default function App() {
                 <Route path="/datasets" element={<DatasetsPage />} />
                 <Route path="/datasets/:id" element={<DatasetDetailPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
-                <Route path="/settings/ai" element={<AIConfigPage />} />
                 <Route path="*" element={<Navigate to="/create" replace />} />
               </Routes>
             </Layout>

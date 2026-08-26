@@ -144,6 +144,8 @@ export function TopologyView({ datasetId, ciTypes, relationTypes }: TopologyView
         id: edge.id,
         source: edge.from_id,
         target: edge.to_id,
+        // 正交折线避免贝塞尔弧线穿越同层节点造成“同层互联”的误读
+        type: "smoothstep",
         label: edge.type,
         labelStyle: { fontSize: 10 },
         markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16 },

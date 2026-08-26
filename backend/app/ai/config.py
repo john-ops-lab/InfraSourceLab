@@ -15,6 +15,12 @@ KEY_API_KEY = "ai_api_key"
 KEY_MODEL = "ai_model"
 KEY_TIMEOUT = "ai_timeout_seconds"
 
+# 系统提示词：default 用内置默认，custom 使用用户自定义内容（为空时回退默认）
+KEY_PROMPT_MODE = "ai_prompt_mode"
+KEY_PROMPT_CUSTOM = "ai_prompt_custom"
+
+MAX_CUSTOM_PROMPT_CHARS = 8000
+
 
 class AIConfig:
     def __init__(self, base_url: str, api_key: str, model: str, timeout_seconds: float):
@@ -73,6 +79,35 @@ class AIConfigStore:
             updates[KEY_MODEL] = model.strip()
         if timeout_seconds is not None:
             updates[KEY_TIMEOUT] = str(timeout_seconds)
+
+        with self._session_factory() as session:
+            for key, value in updates.items():
+                row = session.get(AppSetting, key)
+                if row is None:
+                    session.add(AppSetting(key=key, value=value))
+                else:
+                    row.value = value
+            session.commit()
+
+    def prompt_config(self) -> tuple[str, str]:
+        """返回 (mode, custom_content)；mode 只会是 default 或 custom。"""
+        with self._session_factory() as session:
+            rows = session.query(AppSetting).filter(
+                AppSetting.key.in_([KEY_PROMPT_MODE, KEY_PROMPT_CUSTOM])
+            ).all()
+            values = {row.key: row.value for row in rows}
+        mode = values.get(KEY_PROMPT_MODE, "default")
+        if mode not in ("default", "custom"):
+            mode = "default"
+        return mode, values.get(KEY_PROMPT_CUSTOM, "")
+
+    def update_prompt(self, mode: str | None = None, custom: str | None = None) -> None:
+        """None 表示保持原值；custom 允许空字符串（清空自定义内容）。"""
+        updates: dict[str, str] = {}
+        if mode is not None:
+            updates[KEY_PROMPT_MODE] = "custom" if mode == "custom" else "default"
+        if custom is not None:
+            updates[KEY_PROMPT_CUSTOM] = custom.strip()[:MAX_CUSTOM_PROMPT_CHARS]
 
         with self._session_factory() as session:
             for key, value in updates.items():

@@ -3,7 +3,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from app.ai.provider import SpecProposal
+from app.ai.provider import AINotConfiguredError, SpecProposal
 from app.config import Settings
 from app.main import create_app
 
@@ -24,6 +24,13 @@ class FakeProvider:
             raise self.error
         assert self.proposal is not None
         return self.proposal
+
+    async def list_models(self) -> list[str]:
+        # 测试环境没有真实 AI 服务，与“未配置”行为一致
+        raise AINotConfiguredError("AI Provider 未配置（测试环境）。")
+
+    async def test_connection(self) -> str:
+        raise AINotConfiguredError("AI Provider 未配置（测试环境）。")
 
 
 def default_proposal() -> SpecProposal:

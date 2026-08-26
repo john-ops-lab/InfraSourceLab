@@ -1,6 +1,7 @@
 """认证依赖：Bearer Token 双通道。
 
 - 环境变量 ISL_API_KEY 作为备用令牌（安全字符串比较）；
+- 内置默认测试令牌（测试数据工具，降低使用门槛，界面直接展示可修改）；
 - 管理员登录产生的会话令牌（只存哈希，带过期时间）。
 不在日志和错误响应中回显 Key。
 """
@@ -12,6 +13,9 @@ from datetime import datetime, timezone
 from fastapi import HTTPException, Request, status
 
 _SCHEME = "Bearer "
+
+# 内置默认 API Key：面向测试场景，设置页直接展示并允许人工修改为自己的 Key
+DEFAULT_API_KEY = "isl-default-api-key"
 
 
 def _bearer_token(request: Request) -> str:
@@ -27,9 +31,10 @@ def _bearer_token(request: Request) -> str:
 
 def _match_api_key(request: Request, token: str) -> bool:
     expected = request.app.state.settings.isl_api_key
-    if not expected:
-        return False
-    return hmac.compare_digest(token.encode("utf-8"), expected.encode("utf-8"))
+    if expected and hmac.compare_digest(token.encode("utf-8"), expected.encode("utf-8")):
+        return True
+    # 内置默认测试令牌始终可用，避免试用时必须先找环境变量
+    return hmac.compare_digest(token.encode("utf-8"), DEFAULT_API_KEY.encode("utf-8"))
 
 
 def _match_session(request: Request, token: str) -> str | None:

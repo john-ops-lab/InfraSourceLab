@@ -150,16 +150,22 @@ function PasswordCard() {
 
 export default function SettingsPage() {
   const loggedIn = hasSession()
-  const [keyInput, setKeyInput] = useState("")
+  const [keyInput, setKeyInput] = useState(getApiKey())
   const [visible, setVisible] = useState(false)
   const [saved, setSaved] = useState(hasApiKey())
   const [aiConfigured, setAiConfigured] = useState<boolean | null>(null)
+  const [defaultKey, setDefaultKey] = useState("")
 
   const refreshStatus = () => {
     setAiConfigured(null)
     api
       .status()
-      .then((status) => setAiConfigured(status.ai_configured))
+      .then((status) => {
+        setAiConfigured(status.ai_configured)
+        setDefaultKey(status.default_api_key)
+        // 测试数据工具：输入框直接展示当前生效的 Key（默认用内置测试 Key），可人工修改
+        setKeyInput((current) => current || getApiKey() || status.default_api_key)
+      })
       .catch(() => setAiConfigured(null))
   }
 
@@ -174,16 +180,23 @@ export default function SettingsPage() {
       return
     }
     setApiKey(trimmed)
-    setKeyInput("")
     setSaved(true)
     refreshStatus()
     toast.success("API Key 已保存", { description: "仅保存在当前浏览器会话中。" })
   }
 
   const handleClear = () => {
-    clearApiKey()
-    setSaved(false)
-    toast.success("已清除本会话的 API Key")
+    if (defaultKey) {
+      // 默认测试 Key 服务端直接认可，恢复即保存，避免清除后无法认证
+      setApiKey(defaultKey)
+      setKeyInput(defaultKey)
+      setSaved(true)
+      toast.success("已恢复为系统默认测试 Key")
+    } else {
+      clearApiKey()
+      setSaved(false)
+      toast.success("已清除本会话的 API Key")
+    }
   }
 
   return (
@@ -221,8 +234,9 @@ export default function SettingsPage() {
             API Key（备用通道）
           </CardTitle>
           <CardDescription>
-            所有 /api/v1 接口都需要 Bearer Token：优先使用管理员登录会话，环境变量
-            ISL_API_KEY 作为备用。密钥只保存在浏览器 sessionStorage 中。
+            所有 /api/v1 接口都需要 Bearer Token：优先使用管理员登录会话，其次使用下方的 API
+            Key。系统内置默认测试 Key（下方直接展示，可人工修改），密钥只保存在浏览器
+            sessionStorage 中。
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -231,6 +245,11 @@ export default function SettingsPage() {
               <Badge>
                 <BadgeCheck className="size-3.5" aria-hidden />
                 当前会话已配置 API Key
+              </Badge>
+            ) : defaultKey ? (
+              <Badge variant="secondary">
+                <CircleAlert className="size-3.5" aria-hidden />
+                未人工设置，可直接使用系统默认 Key（修改后点保存生效）
               </Badge>
             ) : (
               <Badge variant="secondary">
@@ -245,7 +264,7 @@ export default function SettingsPage() {
                 type={visible ? "text" : "password"}
                 value={keyInput}
                 onChange={(event) => setKeyInput(event.target.value)}
-                placeholder="粘贴服务端 ISL_API_KEY"
+                placeholder={defaultKey || "系统默认测试 Key 加载中…"}
                 aria-label="API Key"
                 autoComplete="off"
                 className="pr-9"
@@ -266,7 +285,7 @@ export default function SettingsPage() {
           {saved && (
             <Button variant="outline" size="sm" onClick={handleClear}>
               <Trash2 className="size-4" aria-hidden />
-              清除本会话密钥
+              恢复默认 Key 并清除修改
             </Button>
           )}
           {getApiKey() && (
@@ -284,11 +303,8 @@ export default function SettingsPage() {
             AI 建议服务
           </CardTitle>
           <CardDescription>
-            创建页的自然语言建议依赖服务端 AI 配置，管理员可在
-            <Link to="/settings/ai" className="mx-1 text-primary underline-offset-4 hover:underline">
-              AI 模型配置
-            </Link>
-            页修改。
+            创建页的自然语言建议依赖服务端 AI 配置，管理员可在「创建数据集」页的「AI 建议服务」
+            区域修改配置、拉取模型列表、测试连接并选择提示词。
           </CardDescription>
         </CardHeader>
         <CardContent>

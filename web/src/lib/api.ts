@@ -154,6 +154,12 @@ export interface AIConfigInfo {
   ai_configured: boolean
 }
 
+export interface AIPromptConfig {
+  default_prompt: string
+  custom_prompt: string
+  active: "default" | "custom"
+}
+
 export interface TopologyNode {
   id: string
   type: string
@@ -176,7 +182,8 @@ export interface TopologyData {
 }
 
 export const api = {
-  status: () => request<{ ai_configured: boolean }>("/api/v1/status"),
+  status: () =>
+    request<{ ai_configured: boolean; default_api_key: string }>("/api/v1/status"),
 
   // 登录接口不携带令牌，也不触发全局 401 跳转（密码错误的 401 由页面自己处理）
   login: (username: string, password: string) =>
@@ -204,6 +211,23 @@ export const api = {
     timeout_seconds: number
   }) =>
     request<AIConfigInfo>("/api/v1/admin/ai-config", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+
+  // 拉取 AI 服务端最新模型 ID 列表（需先保存配置）
+  listAIModels: () => request<{ models: string[] }>("/api/v1/admin/ai-config/models"),
+
+  // 测试当前 AI 配置的连通性；未配置返回 ok: false 而非报错
+  testAIConnection: () =>
+    request<{ ok: boolean; message: string }>("/api/v1/admin/ai-config/test", {
+      method: "POST",
+    }),
+
+  getAIPrompts: () => request<AIPromptConfig>("/api/v1/admin/ai-prompts"),
+
+  updateAIPrompts: (payload: { active: "default" | "custom"; custom_prompt?: string }) =>
+    request<AIPromptConfig>("/api/v1/admin/ai-prompts", {
       method: "PUT",
       body: JSON.stringify(payload),
     }),
