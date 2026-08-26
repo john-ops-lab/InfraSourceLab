@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import {
   Background,
+  ControlButton,
   Controls,
   MarkerType,
   ReactFlow,
@@ -9,11 +10,12 @@ import {
   type NodeMouseHandler,
 } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
-import { Crosshair, Search, Undo2 } from "lucide-react"
+import { Crosshair, Maximize2, Minimize2, Search, Undo2 } from "lucide-react"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { cn } from "@/lib/utils"
 import {
   Select,
   SelectContent,
@@ -36,6 +38,111 @@ const COLS = 12
 const NODE_GAP_X = 190
 const ROW_GAP_Y = 90
 const LAYER_GAP_Y = 70
+
+// 超过 6 层时，第 7 层及以下默认折叠（点击占位块展开）
+const MAX_VISIBLE_LAYERS = 6
+
+// 建立层级的关系：to 一侧是父节点（如 physical_server mounted_in rack）
+const CHILD_TO_PARENT_TYPES = new Set(["mounted_in", "runs_on", "hosted_on", "belongs_to"])
+// from 一侧是父节点（如 data_center contains rack）
+const PARENT_TO_CHILD_TYPES = new Set(["contains"])
+// 其余关系（depends_on/uses/has_ip）视为平级，不参与分层，仅绘制
+
+const COLLAPSED_NODE_ID = "__collapsed_layers__"
+
+interface TopologyNodeLike {
+  id: string
+  type: string
+  name: string
+}
+
+interface TopologyEdgeLike {
+  id: string
+  type: string
+  from_id: string
+  to_id: string
+}
+
+/**
+ * 按真实关系计算每个节点的层级（父在上、子在下）：
+ * Kahn 最长路径分层，depth(根)=0，depth(子)=max(depth(父))+1。
+ * 不参与层级边的孤岛节点按类型顺序排在层级图下方；
+ * 环上节点兜底放到已算出的最大深度之下，避免与正常节点重叠。
+ * 导出仅供单元测试使用。
+ */
+export function computeDepths(
+  nodes: TopologyNodeLike[],
+  edges: TopologyEdgeLike[],
+  typeOrder: string[],
+): Map<string, number> {
+  const ids = new Set(nodes.map((node) => node.id))
+  const parents = new Map<string, Set<string>>()
+  const children = new Map<string, Set<string>>()
+  for (const edge of edges) {
+    if (!ids.has(edge.from_id) || !ids.has(edge.to_id)) continue
+    let parent: string
+    let child: string
+    if (CHILD_TO_PARENT_TYPES.has(edge.type)) {
+      parent = edge.to_id
+      child = edge.from_id
+    } else if (PARENT_TO_CHILD_TYPES.has(edge.type)) {
+      parent = edge.from_id
+      child = edge.to_id
+    } else {
+      continue
+    }
+    ;(parents.get(child) ?? parents.set(child, new Set()).get(child)!).add(parent)
+    ;(children.get(parent) ?? children.set(parent, new Set()).get(parent)!).add(child)
+  }
+
+  const depth = new Map<string, number>()
+  const pending = new Map<string, number>()
+  const queue: string[] = []
+  for (const node of nodes) {
+    // 孤岛（无任何层级边）不参与 Kahn，交给后面的孤岛排序逻辑
+    if (parents.has(node.id)) {
+      pending.set(node.id, parents.get(node.id)!.size)
+    } else if (children.has(node.id)) {
+      depth.set(node.id, 0)
+      queue.push(node.id)
+    }
+  }
+  while (queue.length > 0) {
+    const current = queue.shift()!
+    const currentDepth = depth.get(current) ?? 0
+    for (const child of children.get(current) ?? []) {
+      depth.set(child, Math.max(depth.get(child) ?? 0, currentDepth + 1))
+      const left = (pending.get(child) ?? 1) - 1
+      pending.set(child, left)
+      if (left === 0) queue.push(child)
+    }
+  }
+
+  // 环上剩余节点：统一放到已算出的最大深度之下
+  let maxDepth = -1
+  for (const value of depth.values()) maxDepth = Math.max(maxDepth, value)
+  for (const node of nodes) {
+    if ((pending.get(node.id) ?? 0) > 0) depth.set(node.id, maxDepth + 1)
+  }
+
+  // 孤岛节点（未参与任何层级边）：按类型顺序排在层级图下方逐层排列
+  maxDepth = -1
+  for (const value of depth.values()) maxDepth = Math.max(maxDepth, value)
+  const orphans = nodes.filter((node) => !parents.has(node.id) && !children.has(node.id))
+  orphans.sort((a, b) => {
+    const typeDiff = typeOrder.indexOf(a.type) - typeOrder.indexOf(b.type)
+    return typeDiff !== 0 ? typeDiff : a.id.localeCompare(b.id)
+  })
+  let orphanType: string | null = null
+  for (const orphan of orphans) {
+    if (orphan.type !== orphanType) {
+      maxDepth += 1
+      orphanType = orphan.type
+    }
+    depth.set(orphan.id, maxDepth)
+  }
+  return depth
+}
 
 // 按 CI 类型分层着色（循环取色，确定性）
 const TYPE_COLORS = [
@@ -67,10 +174,28 @@ export function TopologyView({ datasetId, ciTypes, relationTypes }: TopologyView
   const [query, setQuery] = useState("")
   const [appliedQuery, setAppliedQuery] = useState("")
   const [center, setCenter] = useState<string | null>(null)
+  const [collapsedDeep, setCollapsedDeep] = useState(true)
 
   const [data, setData] = useState<TopologyData | null>(null)
   const [loading, setLoading] = useState(true)
   const [selectedCi, setSelectedCi] = useState<CIRecord | null>(null)
+
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+
+  useEffect(() => {
+    const handler = () => setIsFullscreen(document.fullscreenElement === containerRef.current)
+    document.addEventListener("fullscreenchange", handler)
+    return () => document.removeEventListener("fullscreenchange", handler)
+  }, [])
+
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) {
+      void document.exitFullscreen()
+    } else {
+      void containerRef.current?.requestFullscreen()
+    }
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -106,19 +231,42 @@ export function TopologyView({ datasetId, ciTypes, relationTypes }: TopologyView
     return map
   }, [typeOrder])
 
-  // 确定性分层网格布局：y 由类型层序与层内行号决定，x 由列号决定（层内换行避免过宽）
-  const { nodes, edges } = useMemo(() => {
-    if (!data) return { nodes: [] as Node[], edges: [] as Edge[] }
-    const byType = new Map<string, { id: string; name: string; type: string }[]>()
-    for (const node of data.nodes) {
-      const list = byType.get(node.type) ?? []
-      list.push(node)
-      byType.set(node.type, list)
+  // 按真实关系分层的确定性网格布局：
+  // 深度由关系图计算（父在上、子在下），同层按类型分组，层内换行避免过宽
+  const { nodes, edges, hiddenCount, hiddenFromLayer, maxLayer } = useMemo(() => {
+    if (!data) {
+      return {
+        nodes: [] as Node[],
+        edges: [] as Edge[],
+        hiddenCount: 0,
+        hiddenFromLayer: 0,
+        maxLayer: 0,
+      }
     }
+    const depths = computeDepths(data.nodes, data.edges, typeOrder)
+    const byDepth = new Map<number, TopologyNodeLike[]>()
+    let maxLayerValue = 0
+    for (const node of data.nodes) {
+      const depth = depths.get(node.id) ?? 0
+      maxLayerValue = Math.max(maxLayerValue, depth)
+      const list = byDepth.get(depth) ?? []
+      list.push(node)
+      byDepth.set(depth, list)
+    }
+    // 聚焦邻居模式不折叠；全量视图超过 6 层时第 7 层起默认折叠
+    const shouldCollapse = collapsedDeep && center === null && maxLayerValue >= MAX_VISIBLE_LAYERS
+    const hiddenNodes = shouldCollapse
+      ? data.nodes.filter((node) => (depths.get(node.id) ?? 0) >= MAX_VISIBLE_LAYERS)
+      : []
+
+    const typeIndex = new Map(typeOrder.map((type, index) => [type, index]))
     const positions = new Map<string, { x: number; y: number }>()
     let layerY = 0
-    for (const type of typeOrder) {
-      const layer = byType.get(type) ?? []
+    for (let depth = 0; depth <= maxLayerValue; depth++) {
+      const layer = (byDepth.get(depth) ?? []).slice().sort((a, b) => {
+        const diff = (typeIndex.get(a.type) ?? 0) - (typeIndex.get(b.type) ?? 0)
+        return diff !== 0 ? diff : a.id.localeCompare(b.id)
+      })
       if (layer.length === 0) continue
       layer.forEach((node, index) => {
         positions.set(node.id, {
@@ -128,16 +276,38 @@ export function TopologyView({ datasetId, ciTypes, relationTypes }: TopologyView
       })
       layerY += Math.ceil(layer.length / COLS) * ROW_GAP_Y + LAYER_GAP_Y
     }
-    const flowNodes: Node[] = data.nodes.map((node) => {
-      const color = typeColor.get(node.type) ?? "#64748b"
-      return {
-        id: node.id,
-        position: positions.get(node.id) ?? { x: 0, y: 0 },
-        data: { label: node.name },
-        style: { borderColor: color, borderWidth: 2, fontSize: 12 },
-      }
-    })
-    const nodeIds = new Set(data.nodes.map((node) => node.id))
+
+    const flowNodes: Node[] = data.nodes
+      .filter((node) => !hiddenNodes.some((hidden) => hidden.id === node.id))
+      .map((node) => {
+        const color = typeColor.get(node.type) ?? "#64748b"
+        return {
+          id: node.id,
+          position: positions.get(node.id) ?? { x: 0, y: 0 },
+          data: { label: node.name },
+          style: { borderColor: color, borderWidth: 2, fontSize: 12 },
+        }
+      })
+
+    if (shouldCollapse && hiddenNodes.length > 0) {
+      flowNodes.push({
+        id: COLLAPSED_NODE_ID,
+        position: { x: 0, y: layerY },
+        data: {
+          label: `已折叠第 ${MAX_VISIBLE_LAYERS + 1}~${maxLayerValue + 1} 层（${hiddenNodes.length} 个节点），点击展开`,
+        },
+        style: {
+          borderStyle: "dashed",
+          borderColor: "#94a3b8",
+          borderWidth: 2,
+          fontSize: 12,
+          background: "#f8fafc",
+          width: 360,
+        },
+      })
+    }
+
+    const nodeIds = new Set(flowNodes.map((node) => node.id))
     const flowEdges: Edge[] = data.edges
       .filter((edge) => nodeIds.has(edge.from_id) && nodeIds.has(edge.to_id))
       .map((edge) => ({
@@ -150,10 +320,20 @@ export function TopologyView({ datasetId, ciTypes, relationTypes }: TopologyView
         labelStyle: { fontSize: 10 },
         markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16 },
       }))
-    return { nodes: flowNodes, edges: flowEdges }
-  }, [data, typeOrder, typeColor])
+    return {
+      nodes: flowNodes,
+      edges: flowEdges,
+      hiddenCount: hiddenNodes.length,
+      hiddenFromLayer: MAX_VISIBLE_LAYERS + 1,
+      maxLayer: maxLayerValue + 1,
+    }
+  }, [data, typeOrder, typeColor, collapsedDeep, center])
 
   const handleNodeClick: NodeMouseHandler = async (_event, node) => {
+    if (node.id === COLLAPSED_NODE_ID) {
+      setCollapsedDeep(false)
+      return
+    }
     try {
       const ci = await api.getCi(datasetId, node.id)
       setSelectedCi(ci)
@@ -162,8 +342,8 @@ export function TopologyView({ datasetId, ciTypes, relationTypes }: TopologyView
     }
   }
 
-  // 数据变化时重新挂载以重新适配视图
-  const flowKey = `${ciType}|${relationType}|${appliedQuery}|${center ?? ""}`
+  // 数据变化时重新挂载以重新适配视图；深层折叠切换后同样重新适配
+  const flowKey = `${ciType}|${relationType}|${appliedQuery}|${center ?? ""}|${collapsedDeep ? 1 : 0}`
 
   return (
     <div className="space-y-3">
@@ -229,10 +409,28 @@ export function TopologyView({ datasetId, ciTypes, relationTypes }: TopologyView
         <Button type="submit" variant="outline">
           筛选
         </Button>
+        <Button type="button" variant="outline" onClick={toggleFullscreen}>
+          {isFullscreen ? (
+            <Minimize2 className="size-4" aria-hidden />
+          ) : (
+            <Maximize2 className="size-4" aria-hidden />
+          )}
+          {isFullscreen ? "退出全屏" : "全屏"}
+        </Button>
         {center && (
           <Button type="button" variant="ghost" onClick={() => setCenter(null)}>
             <Undo2 className="size-4" aria-hidden />
             返回全量视图
+          </Button>
+        )}
+        {center === null && maxLayer > MAX_VISIBLE_LAYERS && !collapsedDeep && (
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => setCollapsedDeep(true)}
+          >
+            <Minimize2 className="size-4" aria-hidden />
+            折叠第 {MAX_VISIBLE_LAYERS + 1} 层以下
           </Button>
         )}
       </form>
@@ -243,13 +441,25 @@ export function TopologyView({ datasetId, ciTypes, relationTypes }: TopologyView
           个）。可通过类型或文字筛选缩小范围，或点击节点聚焦其邻居。
         </p>
       )}
+      {collapsedDeep && hiddenCount > 0 && center === null && (
+        <p className="text-sm text-muted-foreground" role="status">
+          层级超过 {MAX_VISIBLE_LAYERS} 层：第 {hiddenFromLayer}~{maxLayer} 层共{" "}
+          {hiddenCount} 个节点已折叠，点击图中的虚线占位块可展开。
+        </p>
+      )}
       {center && (
         <p className="text-sm text-muted-foreground" role="status">
           正在聚焦节点 <span className="font-mono">{center}</span> 及其邻居。
         </p>
       )}
 
-      <div className="h-[480px] rounded-lg border bg-background">
+      <div
+        ref={containerRef}
+        className={cn(
+          "rounded-lg border bg-background",
+          isFullscreen ? "h-screen w-screen rounded-none" : "h-[480px]",
+        )}
+      >
         {loading ? (
           <div className="space-y-2 p-4">
             <Skeleton className="h-8 w-full" />
@@ -270,7 +480,16 @@ export function TopologyView({ datasetId, ciTypes, relationTypes }: TopologyView
             proOptions={{ hideAttribution: true }}
           >
             <Background gap={24} />
-            <Controls showInteractive={false} />
+            <Controls showInteractive={false}>
+              {/* 画布内全屏切换：进入全屏后顶部工具栏会被画布遮挡，只能从这里退出（ESC 亦可） */}
+              <ControlButton onClick={toggleFullscreen} aria-label={isFullscreen ? "退出全屏" : "进入全屏"}>
+                {isFullscreen ? (
+                  <Minimize2 className="size-4" aria-hidden />
+                ) : (
+                  <Maximize2 className="size-4" aria-hidden />
+                )}
+              </ControlButton>
+            </Controls>
           </ReactFlow>
         )}
       </div>

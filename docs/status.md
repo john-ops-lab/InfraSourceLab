@@ -101,6 +101,26 @@ Playwright 9 passed（新增拓扑路径与脏数据路径）；容器（8093 �
 Vitest 7 passed；Playwright 9 passed；容器（8093）完成截图取证，含真实 AI 服务（MiniMax-M3）的
 测试连接、模型拉取与建议生成全链路（证据见 `.verify-evidence/fb-*.png`）。
 
+### 拓扑视图修复：真实关系分层、深层折叠与全屏（本地，未同步 GitHub）
+
+第二轮试用反馈排查结论：**关系数据本身正确**（API 抓取 spec 核对 `contains`/`mounted_in`/
+`runs_on`/`hosted_on` 方向与 CMDB 语义一致），错乱出在渲染侧——布局原先按 `ci_types`
+声明顺序分层，一旦类型顺序与真实层级不符就会画歪。已修复：
+
+- 布局改为按真实关系计算层级：Kahn 最长路径分层（`computeDepths`，父在上、子在下，
+  `mounted_in`/`runs_on`/`hosted_on` 归一为父在上），孤岛节点按类型顺序排在层级图下方，
+  环上节点兜底至最大深度之下避免重叠；
+- 层级超过 6 层时，第 7 层起默认折叠为虚线占位块（顶部提示折叠范围与数量），
+  点击占位块展开，展开后提供“折叠第 N 层以下”按钮一键恢复折叠；
+- 全屏修复：改用 Fullscreen API（`requestFullscreen`/`exitFullscreen` + `fullscreenchange`
+  同步状态），并在画布内 Controls 增加切换按钮（全屏时顶部工具栏会被画布遮挡）；
+- 深层折叠由 `MAX_VISIBLE_LAYERS = 6` 常量控制，`computeDepths` 导出供单元测试。
+
+验证：Vitest 13 passed（新增 `computeDepths` 单测 6 条：关系分层归一、声明顺序无关、
+孤岛排序、环形兜底）；Playwright 11 passed（新增 7 层数据集默认折叠/展开/重新折叠、
+全屏进入与退出两条）；容器（8093）重建后以「七层链路示例」数据集截图取证
+（默认折叠、展开、分层正确性、全屏，证据见 `.verify-evidence/topo-*.png`）。
+
 ### Issues #3～#8：不计划实施
 
 这些早期平台化方向已经关闭，不属于当前待办：

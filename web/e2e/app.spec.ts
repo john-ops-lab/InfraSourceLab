@@ -139,6 +139,91 @@ test("拓扑路径：查看节点 → 点击详情 → 聚焦邻居", async ({ p
   await expect(page.getByText(/正在聚焦节点/)).not.toBeVisible()
 })
 
+test("拓扑超过 6 层时第 7 层起默认折叠，可展开与重新折叠", async ({ page }) => {
+  await login(page)
+
+  // 直接通过 API 构造 7 层数据集：dc > rack > server > vm > k8s_node > k8s_workload > app
+  const spec = {
+    name: "e2e-7layers",
+    description: "七层链路用于验证深层折叠",
+    seed: 7,
+    ci_types: [
+      { type: "data_center", count: 1 },
+      { type: "rack", count: 2 },
+      { type: "physical_server", count: 2 },
+      { type: "virtual_machine", count: 4 },
+      { type: "kubernetes_node", count: 2 },
+      { type: "kubernetes_workload", count: 2 },
+      { type: "application", count: 2 },
+    ],
+    relations: [
+      { type: "contains", from_type: "data_center", to_type: "rack", strategy: "balanced", coverage: "to" },
+      { type: "mounted_in", from_type: "physical_server", to_type: "rack", strategy: "balanced", coverage: "from" },
+      { type: "runs_on", from_type: "virtual_machine", to_type: "physical_server", strategy: "balanced", coverage: "from" },
+      { type: "hosted_on", from_type: "kubernetes_node", to_type: "virtual_machine", strategy: "balanced", coverage: "from" },
+      { type: "hosted_on", from_type: "kubernetes_workload", to_type: "kubernetes_node", strategy: "balanced", coverage: "from" },
+      { type: "hosted_on", from_type: "application", to_type: "kubernetes_workload", strategy: "balanced", coverage: "from" },
+    ],
+  }
+  const created = await page.request.post("/api/v1/datasets", {
+    data: { spec, prompt: "e2e 七层折叠" },
+    headers: { Authorization: "Bearer e2e-test-key" },
+  })
+  expect(created.ok()).toBeTruthy()
+  const datasetId = (await created.json()).id
+
+  await page.goto(`/datasets/${datasetId}`)
+  await page.getByRole("tab", { name: "拓扑" }).click()
+
+  // 默认折叠：第 7 层（application）不显示，出现折叠提示与占位块
+  // 共 15 个 CI：可见 13 + 折叠占位块 1 = 14
+  await expect(page.getByText(/第 7~7 层共 2 个节点已折叠/)).toBeVisible()
+  const collapsedNode = page.locator(".react-flow__node", { hasText: "已折叠第 7~7 层" })
+  await expect(collapsedNode).toBeVisible()
+  await expect(page.locator(".react-flow__node")).toHaveCount(14)
+
+  // 点击占位块展开：全部 15 个节点出现
+  await collapsedNode.click()
+  await expect(page.locator(".react-flow__node")).toHaveCount(15)
+  await expect(page.getByText(/第 7~7 层/)).not.toBeVisible()
+
+  // 重新折叠入口可用
+  await page.getByRole("button", { name: /折叠第 7 层以下/ }).click()
+  await expect(page.getByText(/第 7~7 层共 2 个节点已折叠/)).toBeVisible()
+})
+
+test("拓扑全屏按钮进入与退出全屏", async ({ page }) => {
+  await login(page)
+  await page.goto("/create")
+  await page
+    .locator("div", { hasText: "小型数据中心" })
+    .getByRole("button", { name: "使用此模板" })
+    .first()
+    .click()
+  await page.getByRole("button", { name: "生成数据集", exact: true }).click()
+  await page.waitForURL(/\/datasets\/\d+/)
+
+  await page.getByRole("tab", { name: "拓扑" }).click()
+  const enterButton = page.getByRole("button", { name: "全屏", exact: true })
+  await expect(enterButton).toBeVisible()
+  await enterButton.click()
+
+  // 进入全屏：容器成为全屏元素，按钮变为退出全屏
+  await expect(async () => {
+    expect(await page.evaluate(() => Boolean(document.fullscreenElement))).toBe(true)
+  }).toPass()
+
+  // 顶部工具栏被全屏画布遮挡，从画布内 Controls 按钮退出（ESC 亦可）
+  await page
+    .locator(".react-flow__controls")
+    .getByRole("button", { name: "退出全屏" })
+    .click()
+  await expect(async () => {
+    expect(await page.evaluate(() => Boolean(document.fullscreenElement))).toBe(false)
+  }).toPass()
+  await expect(page.getByRole("button", { name: "全屏", exact: true })).toBeVisible()
+})
+
 test("脏数据路径：启用缺陷规则后生成并看到注入提醒", async ({ page }) => {
   await login(page)
   await page.goto("/create")
