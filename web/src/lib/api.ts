@@ -202,7 +202,10 @@ export const api = {
       body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }),
     }),
 
-  getAIConfig: () => request<AIConfigInfo>("/api/v1/admin/ai-config"),
+  // 管理端点在设置页常驻加载：未登录的 401 不触发全局跳转，由面板自行展示登录引导；
+  // 会话过期导致的 403/401 同样在面板内提示，不打断用户当前页面。
+  getAIConfig: () =>
+    request<AIConfigInfo>("/api/v1/admin/ai-config", {}, undefined, false),
 
   updateAIConfig: (payload: {
     base_url: string
@@ -210,27 +213,36 @@ export const api = {
     model: string
     timeout_seconds: number
   }) =>
-    request<AIConfigInfo>("/api/v1/admin/ai-config", {
-      method: "PUT",
-      body: JSON.stringify(payload),
-    }),
+    request<AIConfigInfo>(
+      "/api/v1/admin/ai-config",
+      { method: "PUT", body: JSON.stringify(payload) },
+      undefined,
+      false,
+    ),
 
   // 拉取 AI 服务端最新模型 ID 列表（需先保存配置）
-  listAIModels: () => request<{ models: string[] }>("/api/v1/admin/ai-config/models"),
+  listAIModels: () =>
+    request<{ models: string[] }>("/api/v1/admin/ai-config/models", {}, undefined, false),
 
   // 测试当前 AI 配置的连通性；未配置返回 ok: false 而非报错
   testAIConnection: () =>
-    request<{ ok: boolean; message: string }>("/api/v1/admin/ai-config/test", {
-      method: "POST",
-    }),
+    request<{ ok: boolean; message: string }>(
+      "/api/v1/admin/ai-config/test",
+      { method: "POST" },
+      undefined,
+      false,
+    ),
 
-  getAIPrompts: () => request<AIPromptConfig>("/api/v1/admin/ai-prompts"),
+  getAIPrompts: () =>
+    request<AIPromptConfig>("/api/v1/admin/ai-prompts", {}, undefined, false),
 
   updateAIPrompts: (payload: { active: "default" | "custom"; custom_prompt?: string }) =>
-    request<AIPromptConfig>("/api/v1/admin/ai-prompts", {
-      method: "PUT",
-      body: JSON.stringify(payload),
-    }),
+    request<AIPromptConfig>(
+      "/api/v1/admin/ai-prompts",
+      { method: "PUT", body: JSON.stringify(payload) },
+      undefined,
+      false,
+    ),
 
   templates: () =>
     request<{ templates: TemplateInfo[]; ci_types: string[]; relation_types: string[] }>(

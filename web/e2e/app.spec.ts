@@ -67,7 +67,7 @@ test("错误的 API Key 会触发 401 引导到登录页", async ({ page }) => {
   await expect(page).toHaveURL(/\/login/)
 })
 
-test("管理员登录后创建页可见 AI 建议服务配置与修改密码入口", async ({ page }) => {
+test("管理员登录后设置页可见 AI 建议服务配置与修改密码入口", async ({ page }) => {
   await page.goto("/login")
   await page.getByLabel("用户名").fill("admin")
   await page.getByLabel("密码").fill("admin123")
@@ -78,18 +78,19 @@ test("管理员登录后创建页可见 AI 建议服务配置与修改密码入�
   await page.goto("/datasets")
   await expect(page.getByRole("heading", { name: "数据集列表" })).toBeVisible()
 
-  // AI 建议服务面板：配置、拉取模型、测试连接与提示词都在创建页内
-  await page.goto("/create")
+  // AI 建议服务面板：配置、拉取模型、测试连接与提示词都在设置页内
+  await page.goto("/settings")
+  await expect(page.getByLabel("当前密码")).toBeVisible()
+  await expect(page.getByRole("button", { name: "退出登录" })).toBeVisible()
   await expect(page.getByLabel("Base URL")).toBeVisible()
   await expect(page.getByLabel("模型名称")).toBeVisible()
   await expect(page.getByRole("button", { name: "拉取模型列表" })).toBeVisible()
   await expect(page.getByRole("button", { name: "测试连接" })).toBeVisible()
   await expect(page.getByText("系统默认提示词").first()).toBeVisible()
 
-  // 设置页出现修改密码入口（不强制）
-  await page.goto("/settings")
-  await expect(page.getByLabel("当前密码")).toBeVisible()
-  await expect(page.getByRole("button", { name: "退出登录" })).toBeVisible()
+  // 创建页不再包含 AI 配置面板
+  await page.goto("/create")
+  await expect(page.getByLabel("Base URL")).toHaveCount(0)
 })
 
 test("错误密码登录被拒绝", async ({ page }) => {
@@ -103,7 +104,7 @@ test("错误密码登录被拒绝", async ({ page }) => {
 
 test("API Key 会话不能修改 AI 建议服务配置（403）", async ({ page }) => {
   await login(page)
-  await page.goto("/create")
+  await page.goto("/settings")
   await expect(page.getByText(/需要管理员/)).toBeVisible()
   await expect(page.getByLabel("Base URL")).toHaveCount(0)
 })

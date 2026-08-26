@@ -39,6 +39,7 @@ function isAuthError(error: unknown): boolean {
  */
 export function AIServicePanel() {
   const [config, setConfig] = useState<AIConfigInfo | null>(null)
+  const [statusConfigured, setStatusConfigured] = useState<boolean | null>(null)
   const [forbidden, setForbidden] = useState(false)
   const [loading, setLoading] = useState(true)
 
@@ -60,6 +61,13 @@ export function AIServicePanel() {
 
   useEffect(() => {
     let cancelled = false
+    // 公开状态：非管理员会话也能看到已配置/未配置徽标
+    api
+      .status()
+      .then((status) => {
+        if (!cancelled) setStatusConfigured(status.ai_configured)
+      })
+      .catch(() => {})
     Promise.all([api.getAIConfig(), api.getAIPrompts()])
       .then(([info, promptInfo]) => {
         if (cancelled) return
@@ -193,6 +201,8 @@ export function AIServicePanel() {
     }
   }
 
+  const configured = config ? config.ai_configured : statusConfigured
+
   return (
     <Card>
       <CardHeader>
@@ -202,17 +212,17 @@ export function AIServicePanel() {
         </CardTitle>
         <CardDescription>
           自然语言建议通过 OpenAI 兼容的 /chat/completions 调用模型。配置保存到数据库，立即生效。
-          {config?.ai_configured ? (
+          {configured === true ? (
             <Badge className="ml-2">
               <BadgeCheck className="size-3.5" aria-hidden />
               已配置
             </Badge>
-          ) : (
+          ) : configured === false ? (
             <Badge variant="secondary" className="ml-2">
               <CircleAlert className="size-3.5" aria-hidden />
               未配置（只能使用内置模板）
             </Badge>
-          )}
+          ) : null}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">

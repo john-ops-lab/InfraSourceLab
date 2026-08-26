@@ -3,7 +3,6 @@ import { Link, useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 import {
   BadgeCheck,
-  Bot,
   CircleAlert,
   ExternalLink,
   Eye,
@@ -13,6 +12,7 @@ import {
   Trash2,
   UserRound,
 } from "lucide-react"
+import { AIServicePanel } from "@/components/AIServicePanel"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -153,20 +153,17 @@ export default function SettingsPage() {
   const [keyInput, setKeyInput] = useState(getApiKey())
   const [visible, setVisible] = useState(false)
   const [saved, setSaved] = useState(hasApiKey())
-  const [aiConfigured, setAiConfigured] = useState<boolean | null>(null)
   const [defaultKey, setDefaultKey] = useState("")
 
   const refreshStatus = () => {
-    setAiConfigured(null)
     api
       .status()
       .then((status) => {
-        setAiConfigured(status.ai_configured)
         setDefaultKey(status.default_api_key)
         // 测试数据工具：输入框直接展示当前生效的 Key（默认用内置测试 Key），可人工修改
         setKeyInput((current) => current || getApiKey() || status.default_api_key)
       })
-      .catch(() => setAiConfigured(null))
+      .catch(() => {})
   }
 
   useEffect(() => {
@@ -216,7 +213,7 @@ export default function SettingsPage() {
               未登录
             </CardTitle>
             <CardDescription>
-              使用管理员账号登录后，可修改密码并配置 AI 模型；也可以继续使用下方的 API Key 备用通道。
+              使用管理员账号登录后，可修改密码并在下方「AI 建议服务」中配置模型；也可以继续使用下方的 API Key 备用通道。
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -296,33 +293,7 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Bot className="size-5" aria-hidden />
-            AI 建议服务
-          </CardTitle>
-          <CardDescription>
-            创建页的自然语言建议依赖服务端 AI 配置，管理员可在「创建数据集」页的「AI 建议服务」
-            区域修改配置、拉取模型列表、测试连接并选择提示词。
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {aiConfigured === null ? (
-            <p className="text-sm text-muted-foreground">无法获取状态，请检查服务是否运行。</p>
-          ) : aiConfigured ? (
-            <Badge>
-              <BadgeCheck className="size-3.5" aria-hidden />
-              已配置（可从提示词生成建议规格）
-            </Badge>
-          ) : (
-            <Badge variant="secondary">
-              <CircleAlert className="size-3.5" aria-hidden />
-              未配置（可改用内置模板创建数据集）
-            </Badge>
-          )}
-        </CardContent>
-      </Card>
+      <AIServicePanel />
 
       <Card>
         <CardHeader>

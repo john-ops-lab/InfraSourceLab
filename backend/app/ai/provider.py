@@ -134,7 +134,7 @@ class OpenAICompatibleProvider:
         config = self._resolve_config()
         if not config.configured:
             raise AINotConfiguredError(
-                "AI Provider 未配置。请在创建页的「AI 建议服务」区域填写接入地址、密钥与模型，"
+                "AI Provider 未配置。请在设置页的「AI 建议服务」区域填写接入地址、密钥与模型，"
                 "或设置 ISL_AI_BASE_URL、ISL_AI_API_KEY 和 ISL_AI_MODEL 环境变量，"
                 "也可以改用内置模板创建数据集。"
             )
@@ -189,7 +189,7 @@ class OpenAICompatibleProvider:
         config = self._resolve_config()
         if not config.configured:
             raise AINotConfiguredError(
-                "AI Provider 未配置。请在创建页的「AI 建议服务」区域填写接入地址、密钥与模型，"
+                "AI Provider 未配置。请在设置页的「AI 建议服务」区域填写接入地址、密钥与模型，"
                 "或设置 ISL_AI_BASE_URL、ISL_AI_API_KEY 和 ISL_AI_MODEL 环境变量，"
                 "也可以改用内置模板创建数据集。"
             )

@@ -8,7 +8,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { SpecEditor } from "@/components/SpecEditor"
-import { AIServicePanel } from "@/components/AIServicePanel"
 import { api, ApiError } from "@/lib/api"
 import { totalCiCount, type GenerationSpec, type TemplateInfo } from "@/lib/spec"
 
@@ -176,8 +175,6 @@ export default function CreatePage() {
           )}
         </CardContent>
       </Card>
-
-      <AIServicePanel />
 
       {error && (
         <Alert variant="destructive">
