@@ -6,6 +6,7 @@ AI 唯一任务：自然语言 → GenerationSpec 建议 + 中文说明 + warnin
 """
 
 import json
+import logging
 from typing import Protocol
 
 import httpx
@@ -15,6 +16,11 @@ from ..config import Settings
 from ..limits import MAX_AI_PROMPT_CHARS, MAX_AI_RESPONSE_BYTES
 from ..specs.models import BUILTIN_CI_TYPES, BUILTIN_RELATION_TYPES, SpecValidationError, parse_and_validate
 from .config import AIConfigStore
+
+logger = logging.getLogger("infrasourcelab.ai")
+
+# 输出 token 上限：规格 JSON 较长，避免兼容服务默认值过小导致截断
+AI_MAX_COMPLETION_TOKENS = 8192
 
 
 class AINotConfiguredError(RuntimeError):
@@ -80,11 +86,29 @@ def _extract_json(content: str) -> dict:
             lines.pop()
         text = "\n".join(lines).strip()
 
+    # 候选：全文、首尾大括号区间
     candidates = [text]
-    # 容错：模型可能在 JSON 前后附加说明文字，截取首尾大括号区间再试
     first, last = text.find("{"), text.rfind("}")
     if first != -1 and last > first:
         candidates.append(text[first : last + 1])
+
+    # 混合推理模型（如 MiniMax-M3）会把思考过程输出在 content 开头，
+    # 思考里可能带草稿 JSON。扫描每个 '{' 用 raw_decode 提取完整对象，
+    # 最终答案通常是最后一个含 spec 字段的对象。
+    objects: list[dict] = []
+    decoder = json.JSONDecoder()
+    for position, char in enumerate(text):
+        if char != "{":
+            continue
+        try:
+            obj, _end = decoder.raw_decode(text, position)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict):
+            objects.append(obj)
+    for obj in reversed(objects):
+        if "spec" in obj:
+            return obj
 
     for candidate in candidates:
         try:
@@ -94,8 +118,13 @@ def _extract_json(content: str) -> dict:
         if isinstance(data, dict):
             return data
         raise AIProviderError("AI 返回的 JSON 顶层必须是对象。")
+    if objects:
+        return objects[-1]
+    logger.warning("AI 返回内容无法提取 JSON，前 500 字符：%s", text[:500])
+    preview = " ".join(text[:80].split())
     raise AIProviderError(
-        "AI 返回的内容不是有效 JSON，已尝试提取仍失败。请重试、检查模型能力或调整提示词。"
+        f"AI 返回的内容不是有效 JSON，已尝试提取仍失败（内容开头：「{preview}」）。"
+        "请重试、检查模型能力或调整提示词。"
     )
 
 
@@ -201,6 +230,7 @@ class OpenAICompatibleProvider:
         payload = {
             "model": config.model,
             "temperature": 0.2,
+            "max_tokens": AI_MAX_COMPLETION_TOKENS,
             "messages": [
                 {"role": "system", "content": self._system_prompt()},
                 {"role": "user", "content": prompt},
@@ -225,9 +255,20 @@ class OpenAICompatibleProvider:
 
         body = response.json()
         try:
-            content = body["choices"][0]["message"]["content"]
+            choice = body["choices"][0]
+            content = choice["message"]["content"]
         except (KeyError, IndexError, TypeError) as exc:
             raise AIProviderError("AI 响应结构不符合预期，无法提取内容。") from exc
+        if not isinstance(content, str) or not content.strip():
+            logger.warning("AI 返回 content 为空，响应前 500 字符：%s", str(body)[:500])
+            raise AIProviderError(
+                "AI 返回内容为空（部分推理模型会输出到思考通道）。请重试或更换模型。"
+            )
+        if choice.get("finish_reason") == "length":
+            logger.warning("AI 输出被截断（finish_reason=length），前 300 字符：%s", content[:300])
+            raise AIProviderError(
+                "AI 输出因长度上限被截断，无法解析。请精简需求后重试。"
+            )
 
         data = _extract_json(content)
         message = data.get("message") or "AI 未提供说明。"

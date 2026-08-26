@@ -92,9 +92,12 @@ Playwright 9 passed（新增拓扑路径与脏数据路径）；容器（8093 �
 - AI 配置从顶层菜单移除，合并到设置页「AI 建议服务」面板：配置表单、拉取模型列表（`GET /models`）、
   测试连接、系统提示词默认/自定义切换（`GET/PUT /api/v1/admin/ai-prompts`，自定义为空时回退默认）；
   管理端点 401/403 不触发全局跳转，未登录也可在设置页看到配置状态徽标与登录引导；
-- AI 返回 JSON 解析容错：剥离 markdown 围栏后，支持截取前后缀文字中的首个 JSON 对象。
+- AI 返回 JSON 解析容错：剥离 markdown 围栏后，扫描每个 `{` 用 raw_decode 提取完整对象，
+  优先取思考过程（混合推理模型如 MiniMax-M3 会在 content 开头输出思考与草稿 JSON）之后
+  含 spec 字段的最终答案；content 为空、输出被 max_tokens 截断（请求已显式设置 8192）
+  均给出针对性错误，解析失败时错误信息附内容开头预览并记录服务端日志。
 
-验证：后端 `uv run pytest` 91 passed（新增 15 条：默认 Key、提示词配置、模型列表/连通性、JSON 容错）；
+验证：后端 `uv run pytest` 95 passed（新增 19 条：默认 Key、提示词配置、模型列表/连通性、JSON 容错与思考草稿提取）；
 Vitest 7 passed；Playwright 9 passed；容器（8093）完成截图取证，含真实 AI 服务（MiniMax-M3）的
 测试连接、模型拉取与建议生成全链路（证据见 `.verify-evidence/fb-*.png`）。
 

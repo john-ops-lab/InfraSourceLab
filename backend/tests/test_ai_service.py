@@ -144,3 +144,33 @@ def test_extract_json_rejects_garbage():
 def test_extract_json_rejects_top_level_array():
     with pytest.raises(AIProviderError):
         _extract_json("[1, 2, 3]")
+
+
+def test_extract_json_prefers_final_spec_after_thinking_draft():
+    # 混合推理模型：思考文字 + 草稿 JSON（无 spec）+ 最终 JSON（含 spec）
+    content = (
+        "用户需要 2 个机柜。先考虑：{\"count\": 2, \"type\": \"rack\"}\n"
+        "关系用 mounted_in。最终方案：\n"
+        "{\"message\": \"生成 2 机柜 6 服务器\", \"spec\": {\"name\": \"x\"}, \"warnings\": []}"
+    )
+    assert _extract_json(content) == {
+        "message": "生成 2 机柜 6 服务器",
+        "spec": {"name": "x"},
+        "warnings": [],
+    }
+
+
+def test_extract_json_prefers_last_object_with_spec():
+    content = '{"spec": {"name": "draft"}} 补充说明 {"spec": {"name": "final"}}'
+    assert _extract_json(content)["spec"] == {"name": "final"}
+
+
+def test_extract_json_falls_back_to_last_complete_object():
+    # 无任何含 spec 的对象时，取最后一个完整对象，避免直接拒识
+    content = '草稿 {"a": 1} 最终 {"b": 2}'
+    assert _extract_json(content) == {"b": 2}
+
+
+def test_extract_json_error_includes_preview():
+    with pytest.raises(AIProviderError, match="内容开头"):
+        _extract_json("抱歉，我无法生成内容。")
