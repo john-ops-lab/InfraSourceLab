@@ -309,6 +309,9 @@ type ExpandableNodeData = {
 
 type ExpandableNode = Node<ExpandableNodeData, "expandable">
 
+// 隐式锚点统一样式：不可见、不占空间，仅供边定位端点
+const HIDDEN_HANDLE_STYLE = { opacity: 0, width: 0, height: 0, border: "none" } as const
+
 function ExpandableNodeCard({ data }: NodeProps<ExpandableNode>) {
   const showToggle = data.onToggle !== null && (data.expanded || data.hiddenChildCount > 0)
   return (
@@ -316,13 +319,21 @@ function ExpandableNodeCard({ data }: NodeProps<ExpandableNode>) {
       className="relative w-40 rounded-md border-2 bg-background px-3 py-1.5 text-center text-xs font-medium"
       style={{ borderColor: data.color }}
     >
-      {/* 隐式连接点：ReactFlow v12 自定义节点必须渲染 Handle，否则边找不到端点不会绘制 */}
-      <Handle
-        type="target"
-        position={Position.Top}
-        isConnectable={false}
-        style={{ opacity: 0, width: 0, height: 0, border: "none" }}
-      />
+      {/*
+        隐式锚点：ReactFlow v12 自定义节点必须渲染 Handle，否则边不绘制。
+        每个方向同时提供 source/target 锚点，边生成时按两端节点的布局位置
+        就近接入（上节点从底部出线、下节点从顶部入线），
+        避免 runs_on/mounted_in/hosted_on 等子→父方向的边被迫从子节点底部
+        探出绕到父节点顶部，产生无用的探线与突兀箭头。
+      */}
+      <Handle type="target" position={Position.Top} id="in-top" isConnectable={false} style={HIDDEN_HANDLE_STYLE} />
+      <Handle type="source" position={Position.Bottom} id="out-bottom" isConnectable={false} style={HIDDEN_HANDLE_STYLE} />
+      <Handle type="source" position={Position.Top} id="out-top" isConnectable={false} style={HIDDEN_HANDLE_STYLE} />
+      <Handle type="target" position={Position.Bottom} id="in-bottom" isConnectable={false} style={HIDDEN_HANDLE_STYLE} />
+      <Handle type="source" position={Position.Right} id="out-right" isConnectable={false} style={HIDDEN_HANDLE_STYLE} />
+      <Handle type="target" position={Position.Left} id="in-left" isConnectable={false} style={HIDDEN_HANDLE_STYLE} />
+      <Handle type="source" position={Position.Left} id="out-left" isConnectable={false} style={HIDDEN_HANDLE_STYLE} />
+      <Handle type="target" position={Position.Right} id="in-right" isConnectable={false} style={HIDDEN_HANDLE_STYLE} />
       <span className="block truncate">{data.label}</span>
       {showToggle && (
         <button
@@ -337,12 +348,6 @@ function ExpandableNodeCard({ data }: NodeProps<ExpandableNode>) {
           {data.expanded ? "−" : `+${data.hiddenChildCount}`}
         </button>
       )}
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        isConnectable={false}
-        style={{ opacity: 0, width: 0, height: 0, border: "none" }}
-      />
     </div>
   )
 }
@@ -447,6 +452,7 @@ export function TopologyView({ datasetId, ciTypes, relationTypes }: TopologyView
     })
 
     let flowNodes: Node[]
+    let positionMap: Map<string, { x: number; y: number }>
     if (center !== null) {
       // 聚焦邻居：后端返回全量邻域，分层网格布局，不启用钻取
       const depths = buildHierarchy(data.nodes, data.edges, typeOrder).depths
@@ -482,9 +488,11 @@ export function TopologyView({ datasetId, ciTypes, relationTypes }: TopologyView
           onToggle: null,
         }),
       )
+      positionMap = positions
     } else {
       // 全量视图：钻取树形布局，默认仅顶层，点击节点逐层展开
       const layout = computeDrilldownLayout(data.nodes, data.edges, typeOrder, expandedIds)
+      positionMap = layout.positions
       const expandedSet = new Set(expandedIds)
       flowNodes = data.nodes
         .filter((node) => layout.visibleIds.has(node.id))
@@ -501,18 +509,46 @@ export function TopologyView({ datasetId, ciTypes, relationTypes }: TopologyView
     }
 
     const nodeIds = new Set(flowNodes.map((node) => node.id))
+    // 锚点按两端节点的布局位置就近选择：上节点从底部出线、下节点从顶部入线，
+    // 同层平级用左右；箭头统一指向下方（或右侧）节点，连线始终是短正交折线
+    const anchorsFor = (
+      fromPos: { x: number; y: number } | undefined,
+      toPos: { x: number; y: number } | undefined,
+    ) => {
+      if (fromPos && toPos) {
+        if (fromPos.y > toPos.y) return { sourceHandle: "out-top", targetHandle: "in-bottom" }
+        if (fromPos.y === toPos.y && fromPos.x !== toPos.x) {
+          return fromPos.x < toPos.x
+            ? { sourceHandle: "out-right", targetHandle: "in-left" }
+            : { sourceHandle: "out-left", targetHandle: "in-right" }
+        }
+      }
+      return { sourceHandle: "out-bottom", targetHandle: "in-top" }
+    }
     const flowEdges: Edge[] = data.edges
       .filter((edge) => nodeIds.has(edge.from_id) && nodeIds.has(edge.to_id))
-      .map((edge) => ({
-        id: edge.id,
-        source: edge.from_id,
-        target: edge.to_id,
-        // 正交折线避免贝塞尔弧线穿越同层节点造成“同层互联”的误读
-        type: "smoothstep",
-        label: edge.type,
-        labelStyle: { fontSize: 10 },
-        markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16 },
-      }))
+      .map((edge) => {
+        const { sourceHandle, targetHandle } = anchorsFor(
+          positionMap.get(edge.from_id),
+          positionMap.get(edge.to_id),
+        )
+        return {
+          id: edge.id,
+          source: edge.from_id,
+          target: edge.to_id,
+          sourceHandle,
+          targetHandle,
+          // 正交折线（圆角）避免贝塞尔弧线穿越同层节点造成“同层互联”的误读
+          type: "smoothstep",
+          pathOptions: { borderRadius: 10 },
+          label: edge.type,
+          labelStyle: { fontSize: 10, fill: "#64748b" },
+          labelBgStyle: { fill: "#f8fafc", fillOpacity: 0.9 },
+          labelBgPadding: [4, 2],
+          labelBgBorderRadius: 4,
+          markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12 },
+        }
+      })
     return {
       nodes: flowNodes,
       edges: flowEdges,
