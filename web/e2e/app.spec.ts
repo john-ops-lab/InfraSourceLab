@@ -1,9 +1,15 @@
 import { expect, test, type Page } from "@playwright/test"
 
+// 设置页功能卡默认折叠：点击卡片头部（标题开头匹配）展开后再操作功能区
+async function expandCard(page: Page, title: string) {
+  await page.getByRole("button", { name: new RegExp(`^${title}`) }).click()
+}
+
 export async function login(page: Page) {
   await page.goto("/settings")
+  await expandCard(page, "API Key（备用通道）")
   await page.getByLabel("API Key").fill("e2e-test-key")
-  await page.getByRole("button", { name: "保存" }).click()
+  await page.getByRole("button", { name: "保存", exact: true }).click()
   await expect(page.getByText("当前会话已配置 API Key")).toBeVisible()
 }
 
@@ -61,8 +67,9 @@ test("AI 未配置时提示词建议给出明确错误并引导模板", async ({
 
 test("错误的 API Key 会触发 401 引导到登录页", async ({ page }) => {
   await page.goto("/settings")
+  await expandCard(page, "API Key（备用通道）")
   await page.getByLabel("API Key").fill("wrong-key")
-  await page.getByRole("button", { name: "保存" }).click()
+  await page.getByRole("button", { name: "保存", exact: true }).click()
   await page.goto("/datasets")
   await expect(page).toHaveURL(/\/login/)
 })
@@ -80,8 +87,14 @@ test("管理员登录后设置页可见 AI 建议服务配置与修改密码入�
 
   // AI 建议服务面板：配置、拉取模型、测试连接与提示词都在设置页内
   await page.goto("/settings")
+
+  // 功能卡默认折叠：先验证收起态，再展开验证功能区
+  await expect(page.getByLabel("当前密码")).toBeHidden()
+  await expandCard(page, "账户与密码")
   await expect(page.getByLabel("当前密码")).toBeVisible()
   await expect(page.getByRole("button", { name: "退出登录" })).toBeVisible()
+  await expect(page.getByLabel("Base URL")).toBeHidden()
+  await expandCard(page, "AI 建议服务")
   await expect(page.getByLabel("Base URL")).toBeVisible()
   await expect(page.getByLabel("模型名称")).toBeVisible()
   await expect(page.getByRole("button", { name: "拉取模型列表" })).toBeVisible()
@@ -110,6 +123,7 @@ test("API Key 会话不能修改 AI 建议服务配置（403）", async ({ page 
 
   // 关系类型列表 API Key 可读，但增删改需要管理员登录
   await expect(page.getByText("关系类型管理", { exact: true })).toBeVisible()
+  await expandCard(page, "关系类型管理")
   await expect(page.getByRole("cell", { name: "contained_in", exact: true }).first()).toBeVisible()
   await expect(page.getByText(/增删改需要管理员登录/)).toBeVisible()
 })
@@ -121,6 +135,7 @@ test("管理员可在设置页维护关系类型：改名、新增、删除", as
   await page.getByRole("button", { name: "登录" }).click()
   await page.waitForURL(/\/create/)
   await page.goto("/settings")
+  await expandCard(page, "关系类型管理")
 
   // 修改内置关系 runs_on 的中文名称
   await page.getByRole("button", { name: "编辑 runs_on" }).click()
@@ -132,7 +147,7 @@ test("管理员可在设置页维护关系类型：改名、新增、删除", as
   await page.getByRole("button", { name: "新增关系类型" }).click()
   await page.getByLabel("类型标识").fill("monitors")
   await page.getByLabel("中文名称").fill("监控")
-  await page.getByRole("button", { name: "保存新增" }).click()
+  await page.getByRole("button", { name: "保存新增", exact: true }).click()
   await expect(page.getByRole("cell", { name: "monitors", exact: true }).first()).toBeVisible()
 
   // 删除未被引用的自定义关系

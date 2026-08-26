@@ -13,6 +13,7 @@ import {
   UserRound,
 } from "lucide-react"
 import { AIServicePanel } from "@/components/AIServicePanel"
+import { CollapsibleCard } from "@/components/CollapsibleCard"
 import { RelationTypesPanel } from "@/components/RelationTypesPanel"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -81,17 +82,18 @@ function PasswordCard() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
+    <CollapsibleCard
+      title={
+        <>
           <UserRound className="size-5" aria-hidden />
           账户与密码
-        </CardTitle>
-        <CardDescription>
-          当前登录：{getSessionUser() || "admin"}。不强制修改默认密码，可自行修改。
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
+        </>
+      }
+      description={
+        <>当前登录：{getSessionUser() || "admin"}。不强制修改默认密码，可自行修改。</>
+      }
+    >
+      <div className="space-y-4">
         <div className="grid max-w-lg gap-4">
           <div className="space-y-2">
             <Label htmlFor="old-password">当前密码</Label>
@@ -144,8 +146,8 @@ function PasswordCard() {
             退出登录
           </Button>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </CollapsibleCard>
   )
 }
 
@@ -225,37 +227,38 @@ export default function SettingsPage() {
         </Card>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+      <CollapsibleCard
+        title={
+          <>
             <KeyRound className="size-5" aria-hidden />
             API Key（备用通道）
-          </CardTitle>
-          <CardDescription>
-            所有 /api/v1 接口都需要 Bearer Token：优先使用管理员登录会话，其次使用下方的 API
-            Key。系统内置默认测试 Key（下方直接展示，可人工修改），密钥只保存在浏览器
-            sessionStorage 中。
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex items-center gap-2">
-            {saved ? (
-              <Badge>
-                <BadgeCheck className="size-3.5" aria-hidden />
-                当前会话已配置 API Key
-              </Badge>
-            ) : defaultKey ? (
-              <Badge variant="secondary">
-                <CircleAlert className="size-3.5" aria-hidden />
-                未人工设置，可直接使用系统默认 Key（修改后点保存生效）
-              </Badge>
-            ) : (
-              <Badge variant="secondary">
-                <CircleAlert className="size-3.5" aria-hidden />
-                当前会话未配置 API Key
-              </Badge>
-            )}
-          </div>
+          </>
+        }
+        description={
+          <>
+            <span className="mr-1 inline-flex align-middle">
+              {saved ? (
+                <Badge>
+                  <BadgeCheck className="size-3.5" aria-hidden />
+                  当前会话已配置 API Key
+                </Badge>
+              ) : defaultKey ? (
+                <Badge variant="secondary">
+                  <CircleAlert className="size-3.5" aria-hidden />
+                  未人工设置，可直接使用系统默认 Key
+                </Badge>
+              ) : (
+                <Badge variant="secondary">
+                  <CircleAlert className="size-3.5" aria-hidden />
+                  当前会话未配置 API Key
+                </Badge>
+              )}
+            </span>
+            所有 /api/v1 接口都需要 Bearer Token：优先使用管理员登录会话，其次使用此 Key（系统内置默认测试 Key，可人工修改）。
+          </>
+        }
+      >
+        <div className="space-y-3">
           <div className="flex max-w-lg gap-2">
             <div className="relative flex-1">
               <Input
@@ -288,30 +291,24 @@ export default function SettingsPage() {
           )}
           {getApiKey() && (
             <p className="text-xs text-muted-foreground">
-              当前密钥前 4 位：{getApiKey().slice(0, 4)}••••
+              当前密钥前 4 位：{getApiKey().slice(0, 4)}••••，仅保存在当前浏览器会话中。
             </p>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </CollapsibleCard>
 
       <RelationTypesPanel />
 
       <AIServicePanel />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>接口文档</CardTitle>
-          <CardDescription>FastAPI 自动生成的交互式文档。</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button variant="outline" asChild>
-            <a href="/docs" target="_blank" rel="noreferrer">
-              <ExternalLink className="size-4" aria-hidden />
-              打开 /docs
-            </a>
-          </Button>
-        </CardContent>
-      </Card>
+      <CollapsibleCard title="接口文档" description="FastAPI 自动生成的交互式文档。">
+        <Button variant="outline" asChild>
+          <a href="/docs" target="_blank" rel="noreferrer">
+            <ExternalLink className="size-4" aria-hidden />
+            打开 /docs
+          </a>
+        </Button>
+      </CollapsibleCard>
     </div>
   )
 }

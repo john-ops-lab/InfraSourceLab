@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react"
 import { Link } from "react-router-dom"
 import { LoaderCircle, Network, Pencil, Plus, Save, Trash2, X } from "lucide-react"
 import { toast } from "sonner"
+import { CollapsibleCard } from "@/components/CollapsibleCard"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,7 +15,6 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -223,19 +223,22 @@ export function RelationTypesPanel() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
+    <CollapsibleCard
+      title={
+        <>
           <Network className="size-5" aria-hidden />
           关系类型管理
-        </CardTitle>
-        <CardDescription>
-          维护 CMDB 关系类型的中英文名称与方向：层级（子→父）参与拓扑分层，平级仅绘制连线。
-          修改保存到数据库，规格校验、AI 提示词与界面对照立即生效。
+        </>
+      }
+      description={
+        <>
+          维护 CMDB 关系类型的中英文名称与方向：层级（子→父）参与拓扑分层，平级仅绘制连线
+          {rows.length > 0 && `，共 ${rows.length} 种`}。
           {!hasSession() && " 增删改需要管理员登录（API Key 不具备管理权限）。"}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
+        </>
+      }
+    >
+      <div className="space-y-4">
         {loading ? (
           <p className="text-sm text-muted-foreground">正在读取关系类型…</p>
         ) : forbidden ? (
@@ -428,7 +431,7 @@ export function RelationTypesPanel() {
             )}
           </>
         )}
-      </CardContent>
+      </div>
 
       <AlertDialog
         open={deleteTarget !== null}
@@ -454,6 +457,6 @@ export function RelationTypesPanel() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </Card>
+    </CollapsibleCard>
   )
 }

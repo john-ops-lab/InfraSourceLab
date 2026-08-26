@@ -12,9 +12,9 @@ import {
   Save,
 } from "lucide-react"
 import { toast } from "sonner"
+import { CollapsibleCard } from "@/components/CollapsibleCard"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -204,14 +204,17 @@ export function AIServicePanel() {
   const configured = config ? config.ai_configured : statusConfigured
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
+    <CollapsibleCard
+      title={
+        <>
           <Bot className="size-5" aria-hidden />
           AI 建议服务
-        </CardTitle>
-        <CardDescription>
+        </>
+      }
+      description={
+        <>
           自然语言建议通过 OpenAI 兼容的 /chat/completions 调用模型。配置保存到数据库，立即生效。
+          {!loading && forbidden && !hasSession() && " 修改 AI 配置与提示词需要管理员登录。"}
           {configured === true ? (
             <Badge className="ml-2">
               <BadgeCheck className="size-3.5" aria-hidden />
@@ -223,9 +226,10 @@ export function AIServicePanel() {
               未配置（只能使用内置模板）
             </Badge>
           ) : null}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
+        </>
+      }
+    >
+      <div className="space-y-6">
         {loading ? (
           <p className="text-sm text-muted-foreground">正在读取配置…</p>
         ) : forbidden ? (
@@ -427,7 +431,7 @@ export function AIServicePanel() {
             </section>
           </>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </CollapsibleCard>
   )
 }
