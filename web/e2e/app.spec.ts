@@ -144,12 +144,13 @@ test("管理员可在设置页维护关系类型：改名、新增、删除", as
   await page.getByRole("button", { name: "编辑 runs_on" }).click()
   await page.getByLabel("runs_on 中文名称").fill("运行在")
   await page.getByRole("button", { name: "保存 runs_on 的修改" }).click()
+  await expect(page.getByLabel("runs_on 中文名称")).toHaveCount(0)
   await expect(page.getByRole("cell", { name: "运行在" })).toBeVisible()
 
   // 新增自定义关系 monitors
   await page.getByRole("button", { name: "新增关系类型" }).click()
   await page.getByLabel("类型标识").fill("monitors")
-  await page.getByLabel("中文名称").fill("监控")
+  await page.getByLabel("中文名称", { exact: true }).fill("监控")
   await page.getByRole("button", { name: "保存新增", exact: true }).click()
   await expect(page.getByRole("cell", { name: "monitors", exact: true }).first()).toBeVisible()
 
