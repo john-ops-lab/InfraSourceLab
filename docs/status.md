@@ -7,7 +7,7 @@
 当前代码与验证基线：
 
 - 后端：121 个 pytest；
-- 前端：27 个 Vitest；
+- 前端：29 个 Vitest；
 - 端到端：15 个 Playwright；
 - GitHub Actions：PR 与 `main` 推送均运行后端、前端和端到端三组检查；
 - 数据库格式：SQLite `PRAGMA user_version = 2`；v1 启动时执行保留数据的单步迁移。
@@ -46,7 +46,7 @@ Issue #1 的 MVP 闭环已可运行：
 - CSV ZIP 额外包含 `spec.json` 和 `quality_report.csv`，JSON/XLSX 同步包含质量报告；
 - SQLite v2 为 `datasets` 增加 `quality_report_json`；v1 自动执行幂等的加列迁移，旧数据保留并使用空报告。
 
-当前验证基线：后端 121 passed；Vitest 27 passed；Playwright Chromium 15 passed。GitHub PR/CI 与合并状态以对应 PR 为准，不能由本地结果代替。
+当前验证基线：后端 121 passed；Vitest 29 passed；Playwright Chromium 15 passed。GitHub PR/CI 与合并状态以对应 PR 为准，不能由本地结果代替。
 
 ### 2026-09-04：拓扑节点详情布局修复
 
@@ -62,6 +62,13 @@ Issue #1 的 MVP 闭环已可运行：
 - `CI_ATTRIBUTE_KINDS` 作为字段合同，生成引擎写入前强制检查至少 10 个属性；默认 AI 系统提示词同步声明该保证，并禁止生成规格虚构 `fields` / `attributes` 配置；
 - 生成器版本升至 `1.3.0`：已有数据集原样保留，新创建的数据集使用扩充后的字段；显式 `missing_field` 缺陷仍可按设计减少目标记录的属性数；
 - 新增后端测试，逐类核对最小属性数、字段合同、生成器版本和默认提示词约束。
+
+### 2026-09-04：CI 属性中英文展示
+
+- 拓扑节点详情、CI 列表摘要、CI 详情、标签和质量缺陷字段统一显示“中文名（英文键名）”；
+- 12 种内置 CI 的当前属性均有中文对照，未知自定义字段安全回退为原始键名；
+- 翻译只发生在 Web 展示层，API、搜索、持久化和 JSON/CSV/XLSX 导出继续使用英文键名；
+- 新增 Vitest 与 Playwright 断言，同时证明中文标签可见且接口属性键未被中文化。
 
 ### 后续特性：管理员登录与 AI 配置页（已实现）
 

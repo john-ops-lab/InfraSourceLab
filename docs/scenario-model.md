@@ -138,6 +138,9 @@ kubernetes_workload
 和 `tags` 不计入该数量；显式启用 `missing_field` 数据质量缺陷后，命中的记录可以少于
 10 个属性。默认字段合同如下：
 
+这些英文键名也是 API、搜索、持久化和导出文件的稳定合同，不做中文化改名。Web
+界面通过独立对照表显示“中文名（英文键名）”；未知的自定义字段仍显示原始键名。
+
 | CI 类型 | 默认业务属性 |
 | --- | --- |
 | `data_center` | `location`、`country`、`site_code`、`region`、`timezone`、`tier`、`floor_area_sqm`、`power_capacity_kw`、`cooling_type`、`status`、`environment`、`owner` |

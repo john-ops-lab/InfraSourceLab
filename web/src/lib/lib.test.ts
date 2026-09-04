@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
+  ciFieldLabel,
   ciTypeLabel,
   formatRelation,
   totalCiCount,
@@ -27,6 +28,17 @@ describe("ciTypeLabel", () => {
 
   it("未知类型原样返回", () => {
     expect(ciTypeLabel("unknown_type")).toBe("unknown_type")
+  })
+})
+
+describe("ciFieldLabel", () => {
+  it("为内置属性显示中文名和英文键名", () => {
+    expect(ciFieldLabel("hostname")).toBe("主机名（hostname）")
+    expect(ciFieldLabel("memory_gib")).toBe("内存容量（memory_gib）")
+  })
+
+  it("未知属性保留原始英文键名", () => {
+    expect(ciFieldLabel("custom_field")).toBe("custom_field")
   })
 })
 

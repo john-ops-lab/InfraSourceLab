@@ -55,6 +55,7 @@ import { useRelationTypes } from "@/hooks/useRelationTypes"
 import { downloadJsonFile } from "@/lib/spec-file"
 import {
   DEFECT_KIND_LABELS,
+  ciFieldLabel,
   ciTypeLabel,
   formatRelation,
   relationTypeLabel,
@@ -308,7 +309,7 @@ export default function DatasetDetailPage() {
                       <Badge variant="secondary">{DEFECT_KIND_LABELS[report.kind]}</Badge>
                       <span className="text-sm font-medium">
                         {ciTypeLabel(report.ci_type)}
-                        {report.field ? ` · ${report.field}` : ""}
+                        {report.field ? ` · ${ciFieldLabel(report.field)}` : ""}
                       </span>
                       <span className="text-sm text-muted-foreground">
                         实际 {report.affected_count} / 请求 {report.requested_count} 条
@@ -464,7 +465,7 @@ export default function DatasetDetailPage() {
                       <TableCell className="hidden max-w-xs truncate text-muted-foreground md:table-cell">
                         {Object.entries(ci.attributes)
                           .slice(0, 3)
-                          .map(([key, value]) => `${key}=${formatValue(value)}`)
+                          .map(([key, value]) => `${ciFieldLabel(key)}=${formatValue(value)}`)
                           .join(" · ")}
                       </TableCell>
                     </TableRow>
@@ -652,7 +653,7 @@ export default function DatasetDetailPage() {
                 <div className="space-y-1.5">
                   {Object.entries(selectedCi.attributes).map(([key, value]) => (
                     <div key={key} className="flex justify-between gap-3 text-sm">
-                      <span className="text-muted-foreground">{key}</span>
+                      <span className="text-muted-foreground">{ciFieldLabel(key)}</span>
                       <span className="text-right font-mono text-xs break-all">
                         {formatValue(value)}
                       </span>
@@ -668,7 +669,7 @@ export default function DatasetDetailPage() {
                 <div className="flex flex-wrap gap-1.5">
                   {Object.entries(selectedCi.tags).map(([key, value]) => (
                     <Badge key={key} variant="secondary">
-                      {key}={value}
+                      {ciFieldLabel(key)}={value}
                     </Badge>
                   ))}
                   {Object.keys(selectedCi.tags).length === 0 && (

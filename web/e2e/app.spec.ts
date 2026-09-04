@@ -213,6 +213,10 @@ test("拓扑节点详情显示完整记录，内容超高时在面板内部滚�
   })
   expect(ciResponse.ok()).toBeTruthy()
   const ci = (await ciResponse.json()).items[0]
+  const attributeKeys = Object.keys(ci.attributes)
+  expect(attributeKeys).toContain("hostname")
+  expect(attributeKeys.every((key) => /^[a-z][a-z0-9_]*$/.test(key))).toBe(true)
+  expect(ci.attributes).not.toHaveProperty("主机名")
 
   await page.setViewportSize({ width: 1280, height: 480 })
   await page.goto(`/datasets/${dataset.id}`)
@@ -227,6 +231,12 @@ test("拓扑节点详情显示完整记录，内容超高时在面板内部滚�
     Object.keys(ci.attributes).length,
   )
   await expect(detail.locator('[data-detail-kind="tag"]')).toHaveCount(Object.keys(ci.tags).length)
+
+  const hostnameRow = detail.locator(
+    '[data-detail-kind="attribute"][data-detail-key="hostname"]',
+  )
+  await expect(hostnameRow).toContainText("主机名")
+  await expect(hostnameRow).toContainText("hostname")
 
   for (const [key, value] of Object.entries(ci.attributes)) {
     const row = detail.locator(`[data-detail-kind="attribute"][data-detail-key="${key}"]`)

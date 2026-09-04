@@ -40,6 +40,7 @@ import { api, ApiError, type TopologyData } from "@/lib/api"
 import { useRelationTypes } from "@/hooks/useRelationTypes"
 import {
   DEFAULT_HIERARCHY_TYPES,
+  ciFieldLabel,
   ciTypeLabel,
   relationTypeLabel,
   type CIRecord,
@@ -840,11 +841,11 @@ export function TopologyView({ datasetId, ciTypes, relationTypes }: TopologyView
                   title="基础信息"
                   emptyText="无基础信息。"
                   entries={[
-                    { key: "id", label: "CI ID", value: selectedCi.id },
-                    { key: "name", label: "名称", value: selectedCi.name },
+                    { key: "id", label: ciFieldLabel("id"), value: selectedCi.id },
+                    { key: "name", label: ciFieldLabel("name"), value: selectedCi.name },
                     {
                       key: "type",
-                      label: "类型",
+                      label: ciFieldLabel("type"),
                       value: `${ciTypeLabel(selectedCi.type)} (${selectedCi.type})`,
                     },
                   ]}
@@ -855,7 +856,7 @@ export function TopologyView({ datasetId, ciTypes, relationTypes }: TopologyView
                   emptyText="无属性。"
                   entries={Object.entries(selectedCi.attributes).map(([key, value]) => ({
                     key,
-                    label: key,
+                    label: ciFieldLabel(key),
                     value,
                   }))}
                 />
@@ -865,7 +866,7 @@ export function TopologyView({ datasetId, ciTypes, relationTypes }: TopologyView
                   emptyText="无标签。"
                   entries={Object.entries(selectedCi.tags).map(([key, value]) => ({
                     key,
-                    label: key,
+                    label: ciFieldLabel(key),
                     value,
                   }))}
                 />
