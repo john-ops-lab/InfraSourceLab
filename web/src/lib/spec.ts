@@ -15,6 +15,8 @@ export interface RelationEntry {
   to_type: string
   strategy: RelationStrategy
   coverage: RelationCoverage
+  min_links?: number
+  max_links?: number
 }
 
 // 四种确定性数据质量缺陷（Issue #2）
@@ -26,6 +28,17 @@ export interface QualityDefectEntry {
   field?: string
   ratio?: number
   count?: number
+}
+
+export interface QualityDefectReport {
+  kind: DefectKind
+  ci_type: string
+  field: string | null
+  requested_count: number
+  affected_count: number
+  affected_ids: string[]
+  source_by_duplicate_id?: Record<string, string>
+  applied_value?: unknown
 }
 
 export interface GenerationSpec {
@@ -182,7 +195,11 @@ export function formatRelation(
   const label = relationTypeLabel(entry.type, "both", registry)
   const coverage =
     entry.coverage === "from" ? "coverage=from（覆盖每个起点）" : "coverage=to（覆盖每个终点）"
-  return `${label}：${entry.from_type} → ${entry.to_type}（${entry.strategy}，${coverage}）`
+  const minLinks = entry.min_links ?? 1
+  const maxLinks = entry.max_links ?? 1
+  const coveredLabel = entry.coverage === "from" ? "起点" : "终点"
+  const links = minLinks === maxLinks ? `${minLinks}` : `${minLinks}~${maxLinks}`
+  return `${label}：${entry.from_type} → ${entry.to_type}（${entry.strategy}，${coverage}，每个${coveredLabel} ${links} 条）`
 }
 
 export function totalCiCount(spec: GenerationSpec): number {

@@ -110,6 +110,8 @@ POST /api/v1/datasets
 
 创建页使用 shadcn/ui 轻量组件完成提示词输入、加载、取消、错误、重试和规格确认。只有未来真实需求需要多轮修改时，才评估 assistant-ui。
 
+已有数据集可下载纯 `GenerationSpec` JSON，也可直接复制回创建页；导入 JSON 先走服务端校验，用户可换 seed 后再确认生成。复用不绕过两步创建合同。
+
 ### 流程二：无 AI 创建
 
 AI 未配置时，用户仍可：
@@ -117,6 +119,7 @@ AI 未配置时，用户仍可：
 - 选择内置模板；
 - 设置各 CI 类型数量；
 - 设置关系覆盖方向；
+- 设置每个覆盖对象的最少/最多关系数；
 - 设置 seed；
 - 将最终规格提交到同一个 `POST /api/v1/datasets`。
 
@@ -190,10 +193,11 @@ has_ip
 ```text
 strategy = balanced | random_seeded
 coverage = from | to
+min_links / max_links = 1..10
 ```
 
-- `coverage=from`：每一个起点 CI 获得一条关系；
-- `coverage=to`：每一个终点 CI 获得一条关系。
+- `coverage=from`：每一个起点 CI 获得 `min_links`～`max_links` 条关系；
+- `coverage=to`：每一个终点 CI 获得 `min_links`～`max_links` 条关系。
 
 同一数据集内相同 `(关系类型, 起点, 终点)` 只允许一条边。
 
@@ -246,7 +250,7 @@ MVP 不建设：
 - 创建页采用一次性提示词到结构化规格的交互；
 - UI 页面少、主路径短；
 - 代码优先可读和可改，不为未来假设提前抽象；
-- SQLite 首版使用 `PRAGMA user_version = 1` 标记模式版本，不兼容时明确提示备份和重建；
+- SQLite 当前使用 `PRAGMA user_version = 2`；v1 可保留数据迁移，其他不兼容版本明确提示备份；
 - 完成 MVP 后先实际接入 CMDB 或 CMDB 测试程序，再决定下一步。
 
 ## 10. 当前路线

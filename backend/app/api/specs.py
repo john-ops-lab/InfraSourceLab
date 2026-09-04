@@ -1,7 +1,10 @@
-"""AI 规格建议：只生成并校验规格建议，不创建或保存数据集。"""
+"""规格建议与导入校验：都不创建或保存数据集。"""
+
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
 from ..ai.provider import (
     AINotConfiguredError,
@@ -10,7 +13,9 @@ from ..ai.provider import (
 )
 from ..auth.token import require_auth
 from ..limits import MAX_PROMPT_LENGTH
-from .deps import get_ai_provider
+from ..specs.models import SpecValidationError, parse_and_validate
+from ..specs.relation_types import relation_type_map
+from .deps import get_ai_provider, get_session
 
 router = APIRouter(prefix="/api/v1", tags=["规格"], dependencies=[Depends(require_auth)])
 
@@ -23,6 +28,10 @@ class SpecProposalResponse(BaseModel):
     message: str
     spec: dict
     warnings: list[str]
+
+
+class SpecValidateRequest(BaseModel):
+    spec: dict[str, Any]
 
 
 @router.post("/specs/from-prompt", response_model=SpecProposalResponse)
@@ -40,3 +49,16 @@ async def spec_from_prompt(body: PromptRequest, provider=Depends(get_ai_provider
     return SpecProposalResponse(
         message=proposal.message, spec=proposal.spec, warnings=proposal.warnings
     )
+
+
+@router.post("/specs/validate")
+def validate_spec(body: SpecValidateRequest, session: Session = Depends(get_session)) -> dict:
+    """校验并规范化导入规格，仍由用户确认后再创建数据集。"""
+    try:
+        spec = parse_and_validate(
+            body.spec,
+            allowed_relation_types=set(relation_type_map(session)),
+        )
+    except SpecValidationError as exc:
+        raise HTTPException(status_code=422, detail={"errors": exc.errors}) from exc
+    return {"spec": spec.model_dump(mode="json")}

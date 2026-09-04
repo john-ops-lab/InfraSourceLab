@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { toast } from "sonner"
 import {
+  CopyPlus,
+  Download,
   FileArchive,
   FileJson,
   FileSpreadsheet,
@@ -12,7 +14,14 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -43,7 +52,9 @@ import { Pagination } from "@/components/Pagination"
 import { TopologyView } from "@/components/TopologyView"
 import { api, ApiError, type DatasetDetail } from "@/lib/api"
 import { useRelationTypes } from "@/hooks/useRelationTypes"
+import { downloadJsonFile } from "@/lib/spec-file"
 import {
+  DEFECT_KIND_LABELS,
   ciTypeLabel,
   formatRelation,
   relationTypeLabel,
@@ -168,6 +179,31 @@ export default function DatasetDetailPage() {
     }
   }
 
+  const handleReuseSpec = () => {
+    if (!detail) return
+    navigate("/create", {
+      state: {
+        spec: structuredClone(detail.spec),
+        sourceDatasetName: detail.name,
+      },
+    })
+  }
+
+  const handleDownloadSpec = () => {
+    if (!detail) return
+    downloadJsonFile(`dataset-${detail.id}-spec.json`, detail.spec)
+  }
+
+  const handleDownloadQualityReport = () => {
+    if (!detail) return
+    downloadJsonFile(`dataset-${detail.id}-quality-report.json`, {
+      dataset_id: detail.id,
+      dataset_name: detail.name,
+      generator_version: detail.generator_version,
+      quality_report: detail.quality_report,
+    })
+  }
+
   if (loadError) {
     return (
       <Alert variant="destructive">
@@ -204,9 +240,24 @@ export default function DatasetDetailPage() {
             {detail.generator_version}
           </p>
         </div>
-        <Button variant="destructive" size="sm" onClick={handleDelete}>
-          删除数据集
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={handleDownloadSpec}>
+            <Download data-icon="inline-start" aria-hidden />
+            下载规格
+          </Button>
+          <Button size="sm" onClick={handleReuseSpec}>
+            <CopyPlus data-icon="inline-start" aria-hidden />
+            基于此规格新建
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            className="border-destructive/40 bg-background hover:bg-destructive/10"
+            onClick={handleDelete}
+          >
+            删除数据集
+          </Button>
+        </div>
       </div>
 
       <Tabs defaultValue="overview">
@@ -232,6 +283,54 @@ export default function DatasetDetailPage() {
                 </ul>
               </AlertDescription>
             </Alert>
+          )}
+          {detail.quality_report.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>质量缺陷明细</CardTitle>
+                <CardDescription>
+                  精确记录缺陷类型、字段和受影响 CI。页面预览前 12 条，下载文件包含全部记录。
+                </CardDescription>
+                <CardAction>
+                  <Button variant="outline" size="sm" onClick={handleDownloadQualityReport}>
+                    <Download data-icon="inline-start" aria-hidden />
+                    下载完整质量报告
+                  </Button>
+                </CardAction>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-3">
+                {detail.quality_report.map((report, index) => (
+                  <div
+                    key={`${report.kind}-${report.ci_type}-${report.field ?? "record"}-${index}`}
+                    className="flex flex-col gap-2 rounded-lg border p-3"
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="secondary">{DEFECT_KIND_LABELS[report.kind]}</Badge>
+                      <span className="text-sm font-medium">
+                        {ciTypeLabel(report.ci_type)}
+                        {report.field ? ` · ${report.field}` : ""}
+                      </span>
+                      <span className="text-sm text-muted-foreground">
+                        实际 {report.affected_count} / 请求 {report.requested_count} 条
+                      </span>
+                    </div>
+                    {report.applied_value !== undefined && (
+                      <p className="text-xs text-muted-foreground">
+                        写入错误值：<code>{formatValue(report.applied_value)}</code>
+                      </p>
+                    )}
+                    <p className="break-all font-mono text-xs text-muted-foreground">
+                      {report.affected_ids.length > 0
+                        ? report.affected_ids.slice(0, 12).join("、")
+                        : "未实际命中记录"}
+                      {report.affected_ids.length > 12
+                        ? ` ……另有 ${report.affected_ids.length - 12} 条，请下载完整报告查看`
+                        : ""}
+                    </p>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
           )}
           <div className="grid gap-4 md:grid-cols-2">
             <Card>

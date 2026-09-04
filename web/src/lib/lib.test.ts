@@ -6,6 +6,7 @@ import {
   type GenerationSpec,
 } from "./spec"
 import { extractDetail } from "./api"
+import { nextSeed, parseGenerationSpecJson } from "./spec-file"
 
 const spec: GenerationSpec = {
   name: "demo",
@@ -48,6 +49,32 @@ describe("formatRelation", () => {
     expect(text).toContain("physical_server → rack")
     expect(text).toContain("balanced")
     expect(text).toContain("coverage=from")
+  })
+
+  it("展示每个覆盖对象的关系数量范围", () => {
+    const text = formatRelation({
+      type: "uses",
+      from_type: "application",
+      to_type: "database",
+      strategy: "random_seeded",
+      coverage: "from",
+      min_links: 2,
+      max_links: 3,
+    })
+    expect(text).toContain("每个起点 2~3 条")
+  })
+})
+
+describe("GenerationSpec 文件辅助", () => {
+  it("只接受 JSON 对象", () => {
+    expect(parseGenerationSpecJson('{"name":"demo"}')).toEqual({ name: "demo" })
+    expect(() => parseGenerationSpecJson("[]")).toThrow("JSON 对象")
+    expect(() => parseGenerationSpecJson("not json")).toThrow("不是有效的 JSON")
+  })
+
+  it("新 seed 即使遇到相同随机值也会变化", () => {
+    expect(nextSeed(42, 42)).toBe(43)
+    expect(nextSeed(2_147_483_647, 2_147_483_647)).toBe(0)
   })
 })
 

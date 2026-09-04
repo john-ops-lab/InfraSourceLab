@@ -6,11 +6,11 @@
 
 当前代码与验证基线：
 
-- 后端：106 个 pytest；
-- 前端：24 个 Vitest；
-- 端到端：12 个 Playwright；
+- 后端：119 个 pytest；
+- 前端：27 个 Vitest；
+- 端到端：14 个 Playwright；
 - GitHub Actions：PR 与 `main` 推送均运行后端、前端和端到端三组检查；
-- 数据库格式：SQLite `PRAGMA user_version = 1`。
+- 数据库格式：SQLite `PRAGMA user_version = 2`；v1 启动时执行保留数据的单步迁移。
 
 当前 `main` 分支已包含：
 
@@ -18,7 +18,7 @@
 LICENSE
 README.md
 docs/
-backend/              FastAPI + SQLAlchemy + SQLite + Faker 数据生成引擎与 106 个 pytest
+backend/              FastAPI + SQLAlchemy + SQLite + Faker 数据生成引擎与 119 个 pytest
 web/                  React 19 + TypeScript + Vite + Tailwind v4 + shadcn/ui 前端
 Dockerfile            单镜像：后端 + 内置前端静态产物
 docker-compose.yml    只向 127.0.0.1:8080 发布
@@ -30,11 +30,23 @@ Issue #1 的 MVP 闭环已可运行：
 自然语言或模板
 → 经过校验的 GenerationSpec
 → 本地确定性生成 CI 与关系
-→ SQLite（PRAGMA user_version = 1）
+→ SQLite（PRAGMA user_version = 2）
 → Bearer Token REST API
 → JSON / CSV / XLSX 导出
 → 创建、数据集列表、详情、设置界面（管理员登录 + AI 模型配置页）
 ```
+
+### 2026-09-04：真实度、复用、质量明细和一对多关系（已实现）
+
+- 物理服务器、网络设备、数据库与中间件改用成套目录项，厂商/型号/角色/版本/默认端口不再独立乱配；主机名环境前缀与 `environment` 保持一致；
+- 关系规则增加 `min_links` / `max_links`（每个被覆盖 CI 为 1～10 条唯一关系），内置应用模板会生成一个应用到多个数据库、中间件或运行节点的关系；
+- 数据质量规则在生成前校验字段是否存在及是否支持大小写变换，不再把 0 次实际修改报成成功；生成器版本升至 `1.2.0`；
+- 每条缺陷保存 `kind`、CI 类型、字段、请求数、实际数和全部受影响 CI ID；重复记录还保存新旧 ID 对照，错误值保存实际写入值；
+- 数据集详情支持下载规格、复制规格回创建页、换 seed、下载完整质量报告；创建页可导入 JSON，并通过 `POST /api/v1/specs/validate` 先校验、后确认；
+- CSV ZIP 额外包含 `spec.json` 和 `quality_report.csv`，JSON/XLSX 同步包含质量报告；
+- SQLite v2 为 `datasets` 增加 `quality_report_json`；v1 自动执行幂等的加列迁移，旧数据保留并使用空报告。
+
+当前验证基线：后端 119 passed；Vitest 27 passed；Playwright Chromium 14 passed。GitHub PR/CI 与合并状态以对应 PR 为准，不能由本地结果代替。
 
 ### 后续特性：管理员登录与 AI 配置页（已实现）
 

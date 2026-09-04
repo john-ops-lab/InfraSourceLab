@@ -7,6 +7,7 @@ import type {
   DatasetSummary,
   GenerationSpec,
   Paged,
+  QualityDefectReport,
   RelationRecord,
   SpecProposal,
   TemplateInfo,
@@ -143,6 +144,7 @@ export interface DatasetDetail extends DatasetListItem {
   prompt: string
   generator_version: string
   spec: GenerationSpec
+  quality_report: QualityDefectReport[]
 }
 
 export interface AIConfigInfo {
@@ -297,6 +299,12 @@ export const api = {
       { method: "POST", body: JSON.stringify({ prompt }) },
       signal,
     ),
+
+  validateSpec: (spec: unknown) =>
+    request<{ spec: GenerationSpec }>("/api/v1/specs/validate", {
+      method: "POST",
+      body: JSON.stringify({ spec }),
+    }),
 
   createDataset: (spec: GenerationSpec, prompt: string) =>
     request<DatasetDetail>("/api/v1/datasets", {

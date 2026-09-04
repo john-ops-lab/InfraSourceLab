@@ -128,7 +128,7 @@ API 使用与设置
 输入提示词
 → POST /api/v1/specs/from-prompt
 → 返回结构化规格、中文说明和 warnings
-→ 用户调整名称、seed、类型数量、关系 strategy/coverage
+→ 用户调整名称、seed、类型数量、关系 strategy/coverage/min_links/max_links
 → POST /api/v1/datasets
 → 进入数据集详情
 ```
@@ -150,7 +150,7 @@ CI 类型
 80 个应用
 
 关系
-contains：data_center → rack，coverage=to
+contained_in：rack → data_center，coverage=from
 mounted_in：physical_server → rack，coverage=from
 runs_on：virtual_machine → physical_server，coverage=from
 
@@ -167,6 +167,9 @@ Seed
 - 关系类型；
 - 关系策略；
 - 关系覆盖方向。
+- 每个被覆盖对象的最少/最多关系数（1～10）。
+
+创建页还支持导入以前下载的 `GenerationSpec` JSON。导入先调用服务端校验接口，只把合法规格放入编辑器，不会跳过用户确认或直接创建数据集。规格编辑区可下载当前 JSON，也可一键换 seed。
 
 主操作：
 
@@ -250,6 +253,8 @@ API 与导出
 - 生成 warning；
 - 各类型数量；
 - `GenerationSpec` 的结构化摘要。
+- 精确质量报告（缺陷、字段、请求/实际条数和受影响 CI ID）；
+- 下载规格、复制规格回创建页、下载完整质量报告。
 
 原始规格可以在高级抽屉中以 JSON 查看，但不作为主视觉，也不要求直接编辑。
 

@@ -98,11 +98,11 @@ uuid5 / hashlib    → 可重复 UUID 和摘要
 示例：
 
 ```text
-2 个数据中心包含 30 个机柜
-coverage=to：确保每个机柜都有一个数据中心
+30 个机柜位于 2 个数据中心
+coverage=from，min_links=max_links=1：确保每个机柜都有一个数据中心
 
-800 台虚拟机运行在 200 台物理服务器上
-coverage=from：确保每台虚拟机都有一台宿主机
+80 个应用使用 12 个数据库
+coverage=from，min_links=1，max_links=3：确保每个应用使用 1～3 个数据库
 ```
 
 MVP 只保留两个策略和一个覆盖方向：
@@ -110,16 +110,18 @@ MVP 只保留两个策略和一个覆盖方向：
 ```text
 strategy=balanced       尽量平均分配被选择的一侧
 strategy=random_seeded  基于 seed 可重复地选择连接对象
-coverage=from           每个起点 CI 生成一条关系
-coverage=to             每个终点 CI 生成一条关系
+coverage=from           覆盖每个起点 CI
+coverage=to             覆盖每个终点 CI
+min_links/max_links     每个被覆盖 CI 生成 1～10 条唯一关系，默认 1/1
 ```
 
-不再使用含义重叠或基数不清晰的 `round_robin`、`one_to_many`。MVP 不建设通用基数模型或图规则语言。
+不再使用含义重叠的 `round_robin`、`one_to_many`。`min_links` / `max_links` 只解决简单一对多，不建设通用基数模型或图规则语言。
 
 生成前和生成后必须检查：
 
 - 起点和终点类型存在且数量大于零；
 - `coverage` 合法；
+- `min_links <= max_links`，且不超过另一侧可连接的唯一对象数；
 - 相同规范化 RelationSpec 不重复；
 - 起点和终点 ID 都存在；
 - 默认不产生自环；
@@ -164,6 +166,7 @@ MVP 目标：
 ```text
 GET  /api/v1/templates
 POST /api/v1/specs/from-prompt
+POST /api/v1/specs/validate
 ```
 
 `POST /api/v1/specs/from-prompt` 只返回经过服务端重新校验和规范化的规格建议：
@@ -176,7 +179,7 @@ POST /api/v1/specs/from-prompt
 }
 ```
 
-它不写入数据集。
+它不写入数据集。`POST /api/v1/specs/validate` 对下载后再次导入的 JSON 执行同一套校验和规范化，也不创建数据集。
 
 ### 创建数据集
 
@@ -328,8 +331,8 @@ Kubernetes 基础环境
 - 数据集创建是纯本地计算，不调用外部服务；
 - 万级规模目标数秒内完成，首版不增加生成超时参数、队列或 Worker；
 - 生成、完整性检查和持久化必须具有清晰事务边界，失败不留下伪成功数据集；
-- SQLite 使用 `PRAGMA user_version = 1`；空库自动初始化，未知非零版本明确拒绝启动并提示备份、删除后重建；
-- 自动迁移不属于 Issue #2，只有真实版本升级需要保留旧数据时才单独立项。
+- SQLite 使用 `PRAGMA user_version = 2`；空库自动初始化，v1 通过幂等加列迁移保留原数据与空质量报告；
+- 除明确的 v1→v2 迁移外，未知非零版本仍拒绝启动并提示先备份；不建设通用自动迁移链。
 
 ## 13. 什么时候才增加新数据源形态
 

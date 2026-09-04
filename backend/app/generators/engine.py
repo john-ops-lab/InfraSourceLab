@@ -10,7 +10,7 @@ from ..specs.models import GenerationSpec
 from .ci_types import GENERATORS, GeneratorContext
 from .relations import generate_relations
 
-GENERATOR_VERSION = "1.1.0"
+GENERATOR_VERSION = "1.2.0"
 
 # 稳定 ID 前缀
 ID_PREFIXES = {
@@ -47,6 +47,7 @@ class GenerationResult:
     cis: list[GeneratedCI]
     relations: list
     warnings: list[str]
+    quality_report: list[dict]
     generator_version: str = GENERATOR_VERSION
 
 
@@ -68,6 +69,7 @@ def generate_dataset(spec: GenerationSpec) -> GenerationResult:
     warnings: list[str] = []
     cis: list[GeneratedCI] = []
     cis_by_type: dict[str, list[str]] = {}
+    quality_report: list[dict] = []
     ip_cursor = spec.seed % 256  # IP 起点也由 seed 决定，保持确定性
 
     for entry in spec.ci_types:
@@ -105,7 +107,7 @@ def generate_dataset(spec: GenerationSpec) -> GenerationResult:
     if spec.quality_defects:
         from .quality import apply_quality_defects
 
-        cis, defect_warnings = apply_quality_defects(spec, cis)
+        cis, defect_warnings, quality_report = apply_quality_defects(spec, cis)
         warnings.extend(defect_warnings)
 
     # 发布前校验：关系引用完整性
@@ -114,4 +116,9 @@ def generate_dataset(spec: GenerationSpec) -> GenerationResult:
         if rel.from_id not in all_ids or rel.to_id not in all_ids:
             raise ValueError(f"关系 {rel.id} 引用了不存在的 CI：{rel.from_id} → {rel.to_id}")
 
-    return GenerationResult(cis=cis, relations=relation_result.relations, warnings=warnings)
+    return GenerationResult(
+        cis=cis,
+        relations=relation_result.relations,
+        warnings=warnings,
+        quality_report=quality_report,
+    )

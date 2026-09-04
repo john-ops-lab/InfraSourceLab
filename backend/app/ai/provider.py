@@ -61,17 +61,19 @@ GenerationSpec 规则：
 - name：数据集名称；description：简短说明；seed：整数种子。
 - ci_types：数组，每项 {{"type", "count"}}；type 只能从以下选择：
   {ci_types}
-- relations：数组，每项 {{"type", "from_type", "to_type", "strategy", "coverage"}}：
+- relations：数组，每项 {{"type", "from_type", "to_type", "strategy", "coverage", "min_links", "max_links"}}：
   - type 只能从以下选择（格式为 标识符=中文名，方向 child_to_parent 表示 from=子、to=父，peer 表示平级）：
 {relation_types}
   - from_type 与 to_type 必须出现在 ci_types 中且数量大于 0
   - strategy 只能是 balanced 或 random_seeded
-  - coverage 只能是 from（每个起点生成一条出边）或 to（每个终点生成一条入边）
+  - coverage 只能是 from（覆盖每个起点）或 to（覆盖每个终点）
+  - min_links/max_links 表示每个被覆盖 CI 的最少/最多关系数，取值 1~10，默认都为 1；
+    max_links 不得超过另一侧可连接的唯一 CI 数，同类型关系还要排除自己
   - 常见搭配（注意层级关系一律从子级指向父级）：rack contained_in data_center（coverage=from）；
     physical_server mounted_in rack（coverage=from）；
     virtual_machine runs_on physical_server（coverage=from）；
     application deployed_on 或 hosted_on virtual_machine（coverage=from）；
-    application uses database（coverage=to）；
+    application uses database（coverage=from，常用 min_links=1、max_links=3）；
     network_device connected_to network_device（coverage=from）
 - 不要重复相同的关系规则；数量保持用户给出的值，未给出时给出合理小值。
 - 不要输出任何命令行、脚本、URL 或文件路径。

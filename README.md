@@ -13,7 +13,7 @@
 [![Backend](https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square)](backend/)
 [![Frontend](https://img.shields.io/badge/frontend-React%2019-61dafb?style=flat-square)](web/)
 [![CI](https://github.com/john-ops-lab/InfraSourceLab/actions/workflows/ci.yml/badge.svg)](https://github.com/john-ops-lab/InfraSourceLab/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-106%20backend%20%7C%2024%20unit%20%7C%2012%20e2e-brightgreen?style=flat-square)](docs/status.md)
+[![Tests](https://img.shields.io/badge/tests-119%20backend%20%7C%2027%20unit%20%7C%2014%20e2e-brightgreen?style=flat-square)](docs/status.md)
 [![Docker](https://img.shields.io/badge/docker-single%20image-2496ed?style=flat-square)](Dockerfile)
 
 [30 秒理解](#-30-秒理解) · [快速开始](#-快速开始) · [REST API](#-rest-api) · [项目文档](#-项目文档)
@@ -52,7 +52,7 @@ CI、关系、拓扑、REST API、JSON / CSV / XLSX
 
 ### 1. 先定义“要什么”
 
-输入一句需求，或直接选择内置模板。系统先给出 `GenerationSpec`，你可以调整 CI 数量、关系方向、覆盖策略、脏数据规则和随机种子，再确认生成。
+输入一句需求、导入以前下载的规格，或直接选择内置模板。系统先给出 `GenerationSpec`，你可以调整 CI 数量、关系方向、每个对象的关系数、脏数据规则和随机种子，再确认生成。
 
 > 以下截图均来自本机运行的 InfraSourceLab，内容是生成器创建的合成演示数据，不是真实企业资产或人员信息。
 
@@ -60,7 +60,7 @@ CI、关系、拓扑、REST API、JSON / CSV / XLSX
 
 ### 2. 再生成一份可复现的数据集
 
-下面的示例生成了 40 个应用、12 个数据库、6 个中间件，以及 58 条关系。页面会保留生成规格、`seed` 和生成器版本，方便以后复现。
+下面的示例生成了 40 个应用、12 个数据库和 6 个中间件。一个应用可以连接多个数据库或中间件；页面会保留生成规格、`seed` 和生成器版本，方便以后复现。
 
 ![数据集概览展示 CI 类型分布和关系规格](docs/assets/screenshots/dataset-overview.png)
 
@@ -81,13 +81,13 @@ CI 和关系支持分页、按类型筛选与关键字搜索；同一份数据�
 | 能力 | 能做什么 |
 | --- | --- |
 | 自然语言 → 规格 | 使用 OpenAI 兼容服务，把一句需求转换为经过校验的 `GenerationSpec` |
-| 模板与手动编辑 | 无需 AI；从内置模板开始，调整类型、数量、关系、seed 和质量规则 |
+| 模板、导入与复用 | 无需 AI；可从模板开始，也可下载、导入或复制旧规格，换 seed 后生成新一批数据 |
 | 确定性生成 | 规范化的 `GenerationSpec`、seed 和生成器版本一致时，生成结果完全一致 |
-| CI 与关系模型 | 内置 12 种 CI 类型、15 种关系类型；关系无重复边、无悬空引用 |
+| CI 与关系模型 | 内置 12 种 CI 类型、15 种关系类型；每个对象可连接 1～10 个唯一对象 |
 | 关系类型注册表 | 在设置页维护中英文名称、方向和拓扑层级；支持自定义关系类型 |
-| 数据质量注入 | 按规则制造缺字段、异常值等脏数据，用来测试导入和校验逻辑 |
+| 数据质量注入 | 按规则制造缺字段、异常值等脏数据，并精确报告命中的 CI、字段和实际条数 |
 | 拓扑钻取 | 折叠/展开、关系感知抽样、筛选、邻居聚焦、中英文标签和全屏 |
-| 数据消费 | Bearer Token REST API，以及 JSON、CSV（ZIP）、XLSX 导出 |
+| 数据消费 | Bearer Token REST API，以及含规格和质量报告的 JSON、CSV（ZIP）、XLSX 导出 |
 | 双通道认证 | 管理员登录会话用于页面管理，`ISL_API_KEY` 用于脚本和系统集成 |
 
 ### AI 的边界
@@ -176,6 +176,7 @@ flowchart LR
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | `POST` | `/api/v1/specs/from-prompt` | 自然语言 → 校验过的规格建议 |
+| `POST` | `/api/v1/specs/validate` | 校验并规范化导入规格，不创建数据集 |
 | `POST` | `/api/v1/datasets` | 确认后的规格 → 数据集 |
 | `GET` | `/api/v1/datasets` | 分页获取数据集列表 |
 | `GET` | `/api/v1/datasets/{id}/cis` | 分页、筛选和搜索 CI |
@@ -190,9 +191,9 @@ flowchart LR
 ## 测试
 
 ```bash
-cd backend && uv run pytest        # 106 个后端用例
-cd web && npm test                 # 24 个 Vitest 单元测试
-cd web && npx playwright test      # 12 个浏览器端到端用例
+cd backend && uv run pytest        # 119 个后端用例
+cd web && npm test                 # 27 个 Vitest 单元测试
+cd web && npx playwright test      # 14 个浏览器端到端用例
 ```
 
 ## 📚 项目文档

@@ -50,6 +50,13 @@ def _dataset_payload(dataset: Dataset) -> dict:
     }
 
 
+def _dataset_detail_payload(dataset: Dataset) -> dict:
+    payload = _dataset_payload(dataset)
+    payload["spec"] = json.loads(dataset.generation_spec_json)
+    payload["quality_report"] = json.loads(dataset.quality_report_json)
+    return payload
+
+
 def _ci_payload(record: CIRecord) -> dict:
     return {
         "id": record.ci_id,
@@ -112,9 +119,7 @@ def create_dataset(body: DatasetCreateRequest, session: Session = Depends(get_se
         raise HTTPException(
             status_code=500, detail="数据集生成失败，已回滚，未创建任何数据。请调整规格后重试。"
         ) from exc
-    payload = _dataset_payload(dataset)
-    payload["spec"] = json.loads(dataset.generation_spec_json)
-    return payload
+    return _dataset_detail_payload(dataset)
 
 
 @router.get("")
@@ -136,9 +141,7 @@ def list_datasets(
 @router.get("/{dataset_id}")
 def get_dataset(dataset_id: int, session: Session = Depends(get_session)) -> dict:
     dataset = _get_dataset_or_404(session, dataset_id)
-    payload = _dataset_payload(dataset)
-    payload["spec"] = json.loads(dataset.generation_spec_json)
-    return payload
+    return _dataset_detail_payload(dataset)
 
 
 @router.delete("/{dataset_id}", status_code=204)

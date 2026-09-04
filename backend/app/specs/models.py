@@ -16,13 +16,16 @@ from ..limits import (
     MAX_CI_TYPE_ENTRIES,
     MAX_COUNT_PER_TYPE,
     MAX_DESCRIPTION_LENGTH,
+    MAX_LINKS_PER_COVERED,
     MAX_NAME_LENGTH,
     MAX_OVERRIDE_PREFIX_LENGTH,
     MAX_QUALITY_ENTRIES,
     MAX_QUALITY_FIELD_LENGTH,
     MAX_RELATION_ENTRIES,
     MAX_TOTAL_CI,
+    MAX_TOTAL_RELATIONS,
 )
+from .ci_fields import CI_ATTRIBUTE_KINDS
 
 # 内置 CI 类型
 BUILTIN_CI_TYPES = [
@@ -104,6 +107,8 @@ class RelationSpec(BaseModel):
     to_type: str
     strategy: RelationStrategy
     coverage: RelationCoverage
+    min_links: int = Field(default=1, ge=1, le=MAX_LINKS_PER_COVERED)
+    max_links: int = Field(default=1, ge=1, le=MAX_LINKS_PER_COVERED)
 
     @field_validator("type")
     @classmethod
@@ -114,6 +119,12 @@ class RelationSpec(BaseModel):
             raise ValueError(f"关系类型格式非法（应为小写字母数字下划线）：{value}")
         return value
 
+    @model_validator(mode="after")
+    def _valid_link_range(self) -> "RelationSpec":
+        if self.min_links > self.max_links:
+            raise ValueError("min_links 不能大于 max_links")
+        return self
+
 
 class QualityDefectSpec(BaseModel):
     """一条确定性缺陷规则：目标类型 + 可选字段 + 比例或数量二选一。"""
@@ -123,6 +134,14 @@ class QualityDefectSpec(BaseModel):
     field: str | None = Field(default=None, max_length=MAX_QUALITY_FIELD_LENGTH)
     ratio: float | None = Field(default=None, gt=0, le=1)
     count: int | None = Field(default=None, ge=1, le=MAX_COUNT_PER_TYPE)
+
+    @field_validator("field")
+    @classmethod
+    def _normalize_field(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
 
     @model_validator(mode="after")
     def _exactly_one_amount(self) -> "QualityDefectSpec":
@@ -170,6 +189,24 @@ class GenerationSpec(BaseModel):
                 errors.append(f"关系两侧数量必须大于 0：{label}")
             if rel.from_type == rel.to_type and counts[rel.from_type] < 2:
                 errors.append(f"同类型关系至少需要 2 个 CI，否则只能产生自环：{label}")
+            counterpart_type = rel.to_type if rel.coverage == "from" else rel.from_type
+            available = counts[counterpart_type]
+            if rel.from_type == rel.to_type:
+                available -= 1
+            if available >= 0 and rel.max_links > available:
+                errors.append(
+                    f"关系每个覆盖对象最多只能连接 {available} 个唯一对象：{label}"
+                )
+
+        estimated_relations = sum(
+            counts.get(rel.from_type if rel.coverage == "from" else rel.to_type, 0)
+            * rel.max_links
+            for rel in self.relations
+        )
+        if estimated_relations > MAX_TOTAL_RELATIONS:
+            errors.append(
+                f"关系总量上限估算 {estimated_relations} 超过上限 {MAX_TOTAL_RELATIONS}"
+            )
 
         seen: set[tuple] = set()
         for rel in self.relations:
@@ -189,6 +226,18 @@ class GenerationSpec(BaseModel):
                 continue
             if counts[defect.ci_type] == 0:
                 errors.append(f"缺陷目标类型数量必须大于 0：{label}")
+            if defect.kind == "duplicate_record" and defect.field is not None:
+                errors.append(f"重复记录缺陷不接受 field：{label}")
+            elif defect.field is not None:
+                fields = CI_ATTRIBUTE_KINDS.get(defect.ci_type, {})
+                if defect.kind == "case_drift" and defect.field == "name":
+                    pass
+                elif defect.field not in fields:
+                    errors.append(f"缺陷目标字段不存在：{defect.ci_type}.{defect.field}")
+                elif defect.kind == "case_drift" and fields[defect.field] != "string":
+                    errors.append(
+                        f"大小写漂移只支持字符串字段：{defect.ci_type}.{defect.field}"
+                    )
             key = (defect.kind, defect.ci_type, defect.field)
             if key in seen_defects:
                 errors.append(f"重复的缺陷规则：{label}")

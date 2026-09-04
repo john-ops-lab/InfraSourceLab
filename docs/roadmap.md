@@ -11,6 +11,7 @@
 → Bearer Token REST API
 → JSON / CSV / XLSX 导出
 → 拓扑浏览与数据质量缺陷注入
+→ 规格下载/导入/复用、精确质量报告与简单一对多关系
 ```
 
 Issue #1 的 MVP 与 Issue #2 的拓扑、数据质量、CMDB 使用示例均已进入 `main`。当前实现与测试数量以 [`status.md`](status.md) 为准。

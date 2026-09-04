@@ -40,22 +40,22 @@ function Layout({ children }: { children: ReactNode }) {
           <NavLink to="/create" className="flex items-center gap-2 font-semibold">
             <Database className="size-5 text-primary" aria-hidden />
             <span>InfraSourceLab</span>
-            <span className="rounded bg-muted px-1.5 py-0.5 text-xs font-normal text-muted-foreground">
+            <span className="hidden rounded bg-muted px-1.5 py-0.5 text-xs font-normal text-muted-foreground lg:inline">
               CMDB 测试数据生成
             </span>
           </NavLink>
           <nav className="flex items-center gap-1" aria-label="主导航">
-            <NavLink to="/create" className={navClassName}>
+            <NavLink to="/create" className={navClassName} aria-label="创建数据集">
               <Plus className="size-4" aria-hidden />
-              创建数据集
+              <span className="hidden sm:inline">创建数据集</span>
             </NavLink>
-            <NavLink to="/datasets" className={navClassName}>
+            <NavLink to="/datasets" className={navClassName} aria-label="数据集列表">
               <Database className="size-4" aria-hidden />
-              数据集列表
+              <span className="hidden sm:inline">数据集列表</span>
             </NavLink>
-            <NavLink to="/settings" className={navClassName}>
+            <NavLink to="/settings" className={navClassName} aria-label="设置">
               <Settings className="size-4" aria-hidden />
-              设置
+              <span className="hidden sm:inline">设置</span>
             </NavLink>
             {hasSession() && (
               <span className="ml-2 hidden text-xs text-muted-foreground sm:inline">

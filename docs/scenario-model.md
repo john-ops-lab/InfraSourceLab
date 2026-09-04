@@ -44,25 +44,31 @@ CI 记录 + CI 关系
   ],
   "relations": [
     {
-      "type": "contains",
-      "from_type": "data_center",
-      "to_type": "rack",
+      "type": "contained_in",
+      "from_type": "rack",
+      "to_type": "data_center",
       "strategy": "balanced",
-      "coverage": "to"
+      "coverage": "from",
+      "min_links": 1,
+      "max_links": 1
     },
     {
       "type": "mounted_in",
       "from_type": "physical_server",
       "to_type": "rack",
       "strategy": "balanced",
-      "coverage": "from"
+      "coverage": "from",
+      "min_links": 1,
+      "max_links": 1
     },
     {
       "type": "runs_on",
       "from_type": "virtual_machine",
       "to_type": "physical_server",
       "strategy": "balanced",
-      "coverage": "from"
+      "coverage": "from",
+      "min_links": 1,
+      "max_links": 1
     }
   ]
 }
@@ -259,7 +265,9 @@ uuid
   "from_type": "virtual_machine",
   "to_type": "physical_server",
   "strategy": "balanced",
-  "coverage": "from"
+  "coverage": "from",
+  "min_links": 1,
+  "max_links": 1
 }
 ```
 
@@ -272,11 +280,13 @@ uuid
 | `to_type` | 是 | 终点 CI 类型 |
 | `strategy` | 是 | 连接对象的选择策略 |
 | `coverage` | 是 | 必须被完整覆盖的一侧 |
+| `min_links` | 否 | 每个被覆盖 CI 的最少关系数，默认 1 |
+| `max_links` | 否 | 每个被覆盖 CI 的最多关系数，默认 1，最大 10 |
 
 ### 核心关系类型
 
 ```text
-contains
+contained_in
 mounted_in
 runs_on
 hosted_on
@@ -301,25 +311,25 @@ random_seeded  基于 seed 的可重复随机连接
 
 ```text
 coverage=from
-每个 from_type CI 必须生成一条出边
+每个 from_type CI 必须生成 min_links～max_links 条出边
 
 coverage=to
-每个 to_type CI 必须生成一条入边
+每个 to_type CI 必须生成 min_links～max_links 条入边
 ```
 
 示例：
 
 ```text
-data_center contains rack
-coverage=to
+rack contained_in data_center
+coverage=from，min_links=1，max_links=1
 → 每个 rack 都属于一个 data_center
 
-virtual_machine runs_on physical_server
-coverage=from
-→ 每个 virtual_machine 都运行在一台 physical_server 上
+application uses database
+coverage=from，min_links=1，max_links=3
+→ 每个 application 使用 1～3 个 database
 ```
 
-MVP 不表达“每个对象必须连接 2～5 个目标”等复杂基数。未来真实需求出现后再单独扩展。
+`min_links` / `max_links` 只表达简单的一对多数量，不引入通用基数语言。连接对象在单条规则内唯一，同类型关系还会排除自己。
 
 ### 关系校验
 
@@ -327,6 +337,8 @@ MVP 不表达“每个对象必须连接 2～5 个目标”等复杂基数。未
 - 被连接的两侧数量必须大于零；
 - `strategy` 只能是 `balanced` 或 `random_seeded`；
 - `coverage` 只能是 `from` 或 `to`；
+- `min_links`、`max_links` 必须在 1～10 之间，且最小值不能大于最大值；
+- `max_links` 不能超过另一侧可连接的唯一 CI 数，所有规则的关系量上限估算不能超过 300,000；
 - 相同规范化 RelationSpec 不允许重复出现；
 - `from_id` 和 `to_id` 必须引用当前数据集记录；
 - 关系 ID 必须稳定；
@@ -457,7 +469,9 @@ duplicate_record
 wrong_value
 ```
 
-Issue #1 不得因为这些能力延迟交付。
+显式 `field` 必须属于目标 CI 类型；`case_drift` 只接受字符串字段，`duplicate_record` 不接受字段。生成结果保存精确质量报告：规则类型、目标类型、字段、请求条数、实际条数和全部受影响 CI ID。重复记录另存新旧 ID 对照，错误值另存实际写入值。
+
+旧数据集的质量报告为空；新数据集的报告随详情 API 和 JSON/XLSX 导出返回，CSV ZIP 使用独立的 `quality_report.csv`。
 
 ## 12. 明确不进入模型
 
@@ -470,6 +484,6 @@ Issue #1 不得因为这些能力延迟交付。
 - 任意脚本；
 - 运行时容器和接口；
 - 多租户归属；
-- 复杂关系基数语言。
+- 条件化或跨规则的复杂关系基数语言。
 
 `GenerationSpec` 只是“生成一份数据集”的小合同，不是基础设施描述语言。

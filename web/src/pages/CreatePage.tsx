@@ -1,28 +1,59 @@
-import { useEffect, useRef, useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { useEffect, useRef, useState, type ChangeEvent } from "react"
+import { useLocation, useNavigate } from "react-router-dom"
 import { toast } from "sonner"
-import { FileText, LoaderCircle, RefreshCw, Sparkles, TriangleAlert, X } from "lucide-react"
+import {
+  Dices,
+  Download,
+  FileText,
+  LoaderCircle,
+  RefreshCw,
+  Sparkles,
+  TriangleAlert,
+  X,
+} from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
+import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { SpecEditor } from "@/components/SpecEditor"
 import { api, ApiError } from "@/lib/api"
+import {
+  downloadJsonFile,
+  MAX_SPEC_FILE_BYTES,
+  nextSeed,
+  parseGenerationSpecJson,
+} from "@/lib/spec-file"
 import { totalCiCount, type GenerationSpec, type TemplateInfo } from "@/lib/spec"
 
 const PROMPT_LIMIT = 4000
 const PROPOSE_TIMEOUT_MS = 60000
 
-type Phase = "idle" | "proposing" | "proposed" | "creating"
+type Phase = "idle" | "proposing" | "importing" | "proposed" | "creating"
+
+interface CreateLocationState {
+  spec?: GenerationSpec
+  sourceDatasetName?: string
+}
 
 export default function CreatePage() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const reuseState = (location.state as CreateLocationState | null) ?? null
+  const reusedSpec = reuseState?.spec
   const [prompt, setPrompt] = useState("")
-  const [phase, setPhase] = useState<Phase>("idle")
+  const [phase, setPhase] = useState<Phase>(reusedSpec ? "proposed" : "idle")
   const [error, setError] = useState<string | null>(null)
-  const [spec, setSpec] = useState<GenerationSpec | null>(null)
-  const [proposalMessage, setProposalMessage] = useState("")
+  const [spec, setSpec] = useState<GenerationSpec | null>(() =>
+    reusedSpec ? structuredClone(reusedSpec) : null,
+  )
+  const [proposalMessage, setProposalMessage] = useState(() =>
+    reusedSpec
+      ? `已从数据集「${reuseState?.sourceDatasetName ?? reusedSpec.name}」复制规格，可修改后再生成。`
+      : "",
+  )
   const [proposalWarnings, setProposalWarnings] = useState<string[]>([])
   const [templates, setTemplates] = useState<TemplateInfo[]>([])
   const abortRef = useRef<AbortController | null>(null)
@@ -101,6 +132,32 @@ export default function CreatePage() {
     setPhase("proposed")
   }
 
+  const handleImport = async (event: ChangeEvent<HTMLInputElement>) => {
+    const input = event.currentTarget
+    const file = input.files?.[0]
+    if (!file) return
+    const fallbackPhase: Phase = spec ? "proposed" : "idle"
+    setError(null)
+    setPhase("importing")
+    try {
+      if (file.size > MAX_SPEC_FILE_BYTES) {
+        throw new Error("规格文件超过 128 KB，请选择只包含 GenerationSpec 的 JSON 文件。")
+      }
+      const raw = parseGenerationSpecJson(await file.text())
+      const result = await api.validateSpec(raw)
+      setSpec(result.spec)
+      setProposalMessage(`已导入并校验「${file.name}」，可继续调整或直接创建。`)
+      setProposalWarnings([])
+      setPhase("proposed")
+      toast.success("GenerationSpec 导入成功")
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "规格导入失败，请检查文件后重试。")
+      setPhase(fallbackPhase)
+    } finally {
+      input.value = ""
+    }
+  }
+
   const handleCreate = async () => {
     if (!spec) return
     setError(null)
@@ -118,8 +175,9 @@ export default function CreatePage() {
   }
 
   const proposing = phase === "proposing"
+  const importing = phase === "importing"
   const creating = phase === "creating"
-  const busy = proposing || creating
+  const busy = proposing || importing || creating
 
   return (
     <div className="space-y-6">
@@ -140,6 +198,7 @@ export default function CreatePage() {
         <CardContent className="space-y-3">
           <div>
             <Textarea
+              name="generation-prompt"
               value={prompt}
               onChange={(event) => setPrompt(event.target.value.slice(0, PROMPT_LIMIT))}
               rows={4}
@@ -176,6 +235,33 @@ export default function CreatePage() {
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader>
+          <CardTitle>导入已有规格</CardTitle>
+          <CardDescription>
+            选择之前下载的 GenerationSpec JSON。服务端会先校验，不会直接创建数据。
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <FieldGroup>
+            <Field data-disabled={busy || undefined}>
+              <FieldLabel htmlFor="spec-file">GenerationSpec JSON 文件</FieldLabel>
+              <Input
+                id="spec-file"
+                type="file"
+                accept="application/json,.json"
+                disabled={busy}
+                aria-describedby="spec-file-description"
+                onChange={handleImport}
+              />
+              <FieldDescription id="spec-file-description">
+                最大 128 KB。{importing ? "正在校验文件…" : "导入后仍可修改名称、数量、关系和 seed。"}
+              </FieldDescription>
+            </Field>
+          </FieldGroup>
+        </CardContent>
+      </Card>
+
       {error && (
         <Alert variant="destructive">
           <TriangleAlert className="size-4" aria-hidden />
@@ -207,9 +293,29 @@ export default function CreatePage() {
                 </AlertDescription>
               </Alert>
             )}
-            <SpecEditor spec={spec} onChange={setSpec} disabled={creating} />
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy}
+                onClick={() => setSpec((current) => current && { ...current, seed: nextSeed(current.seed) })}
+              >
+                <Dices data-icon="inline-start" aria-hidden />
+                换一个 seed
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy}
+                onClick={() => downloadJsonFile("generation-spec.json", spec)}
+              >
+                <Download data-icon="inline-start" aria-hidden />
+                下载当前规格
+              </Button>
+            </div>
+            <SpecEditor spec={spec} onChange={setSpec} disabled={busy} />
             <div className="flex gap-2 border-t pt-4">
-              <Button onClick={handleCreate} disabled={creating || totalCiCount(spec) === 0}>
+              <Button onClick={handleCreate} disabled={busy || totalCiCount(spec) === 0}>
                 {creating ? (
                   <>
                     <LoaderCircle className="size-4 animate-spin" aria-hidden />
