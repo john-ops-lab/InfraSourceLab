@@ -1,6 +1,8 @@
 <div align="center">
 
-# 🏭 InfraSourceLab
+<img src="docs/assets/infrasourcelab-logo.png" alt="InfraSourceLab Logo" width="160">
+
+# InfraSourceLab
 
 **Describe the infrastructure. Generate reliable test data.**
 
