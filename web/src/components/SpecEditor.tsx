@@ -26,6 +26,7 @@ import {
 
 const SINGLE_TYPE_LIMIT = 20000
 const TOTAL_LIMIT = 30000
+const RELATION_LINK_LIMIT = 10
 
 interface SpecEditorProps {
   spec: GenerationSpec
@@ -122,7 +123,7 @@ export function SpecEditor({ spec, onChange, disabled }: SpecEditorProps) {
 
       <section className="space-y-2" aria-label="CI 类型与数量">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold">CI 类型与数量</h3>
+          <h2 className="text-sm font-semibold">CI 类型与数量</h2>
           <span className="text-sm text-muted-foreground">
             合计 {total} 条（上限 {TOTAL_LIMIT.toLocaleString()}）
           </span>
@@ -148,6 +149,7 @@ export function SpecEditor({ spec, onChange, disabled }: SpecEditorProps) {
               </Select>
               <Input
                 type="number"
+                name={`ci-count-${entry.type}`}
                 className="w-28"
                 min={0}
                 max={SINGLE_TYPE_LIMIT}
@@ -193,7 +195,7 @@ export function SpecEditor({ spec, onChange, disabled }: SpecEditorProps) {
       </section>
 
       <section className="space-y-2" aria-label="关系定义">
-        <h3 className="text-sm font-semibold">关系定义</h3>
+        <h2 className="text-sm font-semibold">关系定义</h2>
         <div className="space-y-2">
           {spec.relations.map((entry, index) => (
             <div key={`${entry.type}-${entry.from_type}-${entry.to_type}-${index}`} className="flex flex-wrap items-center gap-2">
@@ -203,7 +205,7 @@ export function SpecEditor({ spec, onChange, disabled }: SpecEditorProps) {
                 onValueChange={(value) => updateRelation(index, { type: value })}
               >
                 <SelectTrigger className="w-44" aria-label="关系类型">
-                  <SelectValue />
+                  <SelectValue>{relationTypeLabel(entry.type, "both", registry)}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {relationOptions.map((value) => (
@@ -273,6 +275,51 @@ export function SpecEditor({ spec, onChange, disabled }: SpecEditorProps) {
                   <SelectItem value="to">coverage=to（覆盖终点）</SelectItem>
                 </SelectContent>
               </Select>
+              <div className="flex shrink-0 items-center gap-2 whitespace-nowrap">
+                <span className="text-xs text-muted-foreground">每个覆盖对象</span>
+                <Input
+                  type="number"
+                  name={`relation-${index + 1}-min-links`}
+                  className="w-20"
+                  min={1}
+                  max={RELATION_LINK_LIMIT}
+                  value={entry.min_links ?? 1}
+                  disabled={disabled}
+                  aria-label={`关系 ${index + 1} 最少连接数`}
+                  onChange={(event) => {
+                    const minLinks = Math.min(
+                      RELATION_LINK_LIMIT,
+                      Math.max(1, Number(event.target.value) || 1),
+                    )
+                    updateRelation(index, {
+                      min_links: minLinks,
+                      max_links: Math.max(minLinks, entry.max_links ?? 1),
+                    })
+                  }}
+                />
+                <span className="text-xs text-muted-foreground">到</span>
+                <Input
+                  type="number"
+                  name={`relation-${index + 1}-max-links`}
+                  className="w-20"
+                  min={1}
+                  max={RELATION_LINK_LIMIT}
+                  value={entry.max_links ?? 1}
+                  disabled={disabled}
+                  aria-label={`关系 ${index + 1} 最多连接数`}
+                  onChange={(event) => {
+                    const maxLinks = Math.min(
+                      RELATION_LINK_LIMIT,
+                      Math.max(1, Number(event.target.value) || 1),
+                    )
+                    updateRelation(index, {
+                      min_links: Math.min(entry.min_links ?? 1, maxLinks),
+                      max_links: maxLinks,
+                    })
+                  }}
+                />
+                <span className="text-xs text-muted-foreground">条</span>
+              </div>
               <Button
                 variant="ghost"
                 size="sm"
@@ -309,6 +356,8 @@ export function SpecEditor({ spec, onChange, disabled }: SpecEditorProps) {
                   to_type: first.type,
                   strategy: "balanced",
                   coverage: "from",
+                  min_links: 1,
+                  max_links: 1,
                 },
               ],
             })
@@ -321,7 +370,7 @@ export function SpecEditor({ spec, onChange, disabled }: SpecEditorProps) {
 
       <section className="space-y-2" aria-label="数据质量缺陷">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold">数据质量缺陷（可选）</h3>
+          <h2 className="text-sm font-semibold">数据质量缺陷（可选）</h2>
           <span className="text-xs text-muted-foreground">确定性注入，受 seed 控制</span>
         </div>
         <div className="space-y-2">
@@ -360,6 +409,7 @@ export function SpecEditor({ spec, onChange, disabled }: SpecEditorProps) {
                 </SelectContent>
               </Select>
               <Input
+                name={`quality-defect-${index + 1}-field`}
                 className="w-36"
                 value={entry.field ?? ""}
                 disabled={disabled}
@@ -386,6 +436,7 @@ export function SpecEditor({ spec, onChange, disabled }: SpecEditorProps) {
               </Select>
               <Input
                 type="number"
+                name={`quality-defect-${index + 1}-amount`}
                 className="w-24"
                 min={entry.ratio !== undefined ? 0.01 : 1}
                 max={entry.ratio !== undefined ? 1 : undefined}

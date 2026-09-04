@@ -130,6 +130,7 @@ generator_version
 record_count
 relation_count
 warnings_json
+quality_report_json
 created_at
 ```
 
@@ -210,6 +211,7 @@ GET /health
 ```text
 GET  /api/v1/templates
 POST /api/v1/specs/from-prompt
+POST /api/v1/specs/validate
 ```
 
 `POST /api/v1/specs/from-prompt` 只执行：
@@ -222,7 +224,7 @@ POST /api/v1/specs/from-prompt
 → 返回 spec、中文说明和 warnings
 ```
 
-它不生成或保存数据集。AI 未配置时返回可操作错误，模板接口仍可正常使用。
+它不生成或保存数据集。AI 未配置时返回可操作错误，模板接口仍可正常使用。导入的 JSON 走 `/api/v1/specs/validate`，通过后仍需用户确认才会提交创建接口。
 
 ### 数据集创建
 
@@ -336,10 +338,11 @@ application → 应用字段生成器
 ```text
 strategy = balanced | random_seeded
 coverage = from | to
+min_links / max_links = 1..10
 ```
 
-- `coverage=from`：每个起点 CI 生成一条出边，目标按策略选择；
-- `coverage=to`：每个终点 CI 生成一条入边，起点按策略选择；
+- `coverage=from`：每个起点 CI 生成 `min_links`～`max_links` 条出边；
+- `coverage=to`：每个终点 CI 生成 `min_links`～`max_links` 条入边；
 - `balanced`：尽量平均分配被选择一侧；
 - `random_seeded`：根据 seed 可重复地选择被连接对象。
 
@@ -371,13 +374,14 @@ coverage = from | to
 
 ## 11. SQLite 模式版本边界
 
-MVP 不建设完整数据库迁移链，但必须避免静默打开未知模式：
+当前不建设完整数据库迁移链，但必须避免静默打开未知模式：
 
-- 使用 SQLite `PRAGMA user_version = 1` 记录首版模式；
-- 新建空数据库时创建表并将版本设置为 1；
-- 版本为 1 时正常启动；
-- 发现其他非零版本时停止启动，输出明确中文错误，提示用户先备份 SQLite 文件，再删除后重建；
-- 不在 Issue #2 中混入数据库迁移；只有未来真实版本升级需要保留旧数据时，才单独建立迁移 Issue。
+- 使用 SQLite `PRAGMA user_version = 2` 记录当前模式；
+- 新建空数据库时创建表并将版本设置为 2；
+- 版本 1 启动时只执行一条幂等迁移：为 `datasets` 增加 `quality_report_json`，原有记录使用空报告且不丢失；
+- 版本 2 正常启动；
+- 发现其他非零版本时停止启动，输出明确中文错误并提示用户先备份；
+- 后续结构变化仍需独立版本、兼容策略和测试，不把 `create_all` 当作迁移。
 
 ## 12. 前端架构
 

@@ -8,6 +8,10 @@ MAX_TOTAL_CI = 30_000
 MAX_CI_TYPE_ENTRIES = 12
 # 单个规格中关系规则上限
 MAX_RELATION_ENTRIES = 32
+# 每个被覆盖 CI 在单条规则中最多连接的唯一对象数
+MAX_LINKS_PER_COVERED = 10
+# 关系规则按上限估算后的总关系数，避免一对多配置失控
+MAX_TOTAL_RELATIONS = 300_000
 # 单个规格中数据质量缺陷规则上限（四种缺陷各一条也富余）
 MAX_QUALITY_ENTRIES = 8
 # 缺陷字段名长度上限

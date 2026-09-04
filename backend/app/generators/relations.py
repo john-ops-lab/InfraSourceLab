@@ -1,7 +1,7 @@
-"""关系生成：固定语义 strategy=balanced|random_seeded，coverage=from|to。
+"""关系生成：固定语义 strategy、coverage 与每对象连接数。
 
-- coverage=from：每个起点 CI 生成一条出边；
-- coverage=to：每个终点 CI 生成一条入边；
+- coverage=from：每个起点 CI 生成 min_links~max_links 条出边；
+- coverage=to：每个终点 CI 生成 min_links~max_links 条入边；
 - balanced：被选择的一侧尽量平均分配；
 - random_seeded：基于 seed 可重复地选择连接对象；
 - 默认不生成自环；
@@ -40,27 +40,42 @@ def _pick_targets(
     covered_is_from: bool,
     rng: random.Random,
 ) -> list[tuple[str, str]]:
-    """为被覆盖一侧的每个 CI 选择连接对象，返回 (from_id, to_id) 列表。"""
+    """为被覆盖一侧的每个 CI 选择若干唯一对象，返回边列表。"""
     edges: list[tuple[str, str]] = []
     other_count = len(other_ids)
+    other_positions = {item: index for index, item in enumerate(other_ids)}
+    link_range = rel.max_links - rel.min_links + 1
 
     for index, covered in enumerate(covered_ids):
+        available_count = other_count - (1 if covered in other_positions else 0)
+        if available_count <= 0:
+            continue
+
         if rel.strategy == "balanced":
-            chosen = other_ids[index % other_count]
+            link_count = rel.min_links + (index % link_range)
+            chosen_ids: list[str] = []
+            cursor = index % other_count
+            while len(chosen_ids) < link_count:
+                chosen = other_ids[cursor]
+                cursor = (cursor + 1) % other_count
+                if chosen != covered and chosen not in chosen_ids:
+                    chosen_ids.append(chosen)
         else:
-            chosen = other_ids[rng.randrange(other_count)]
+            link_count = rng.randint(rel.min_links, rel.max_links)
+            excluded_position = other_positions.get(covered)
+            sampled_positions = rng.sample(range(available_count), link_count)
+            if excluded_position is not None:
+                sampled_positions = [
+                    position + 1 if position >= excluded_position else position
+                    for position in sampled_positions
+                ]
+            chosen_ids = [other_ids[position] for position in sampled_positions]
 
-        # 默认不生成自环：同类型关系中选中自己时顺延到下一个对象
-        if chosen == covered and other_count > 1:
-            position = other_ids.index(covered)
-            chosen = other_ids[(position + 1) % other_count]
-        if chosen == covered:
-            continue  # 仅剩自己，无法避免自环，跳过（校验阶段通常已拦截）
-
-        if covered_is_from:
-            edges.append((covered, chosen))
-        else:
-            edges.append((chosen, covered))
+        for chosen in chosen_ids:
+            if covered_is_from:
+                edges.append((covered, chosen))
+            else:
+                edges.append((chosen, covered))
     return edges
 
 
@@ -78,7 +93,10 @@ def generate_relations(
         if not from_ids or not to_ids:
             continue  # 规格校验已拦截，这里防御性跳过
 
-        rng = random.Random(f"{spec.seed}:rel:{rel.type}:{rel.from_type}:{rel.to_type}")
+        rng = random.Random(
+            f"{spec.seed}:rel:{rel.type}:{rel.from_type}:{rel.to_type}:"
+            f"{rel.strategy}:{rel.coverage}:{rel.min_links}:{rel.max_links}"
+        )
         if rel.coverage == "from":
             edges = _pick_targets(rel, from_ids, to_ids, True, rng)
         else:
@@ -102,7 +120,8 @@ def generate_relations(
         if dropped:
             warnings.append(
                 f"关系规则 {rel.type}：{rel.from_type} → {rel.to_type}"
-                f"（{rel.strategy}/{rel.coverage}）生成时与其他规则产生 {dropped} 条重复边，已去重。"
+                f"（{rel.strategy}/{rel.coverage}，{rel.min_links}~{rel.max_links} 条）"
+                f"生成时与其他规则产生 {dropped} 条重复边，已去重。"
             )
 
     return RelationResult(relations=relations, warnings=warnings)

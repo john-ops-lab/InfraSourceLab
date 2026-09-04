@@ -317,4 +317,71 @@ test("脏数据路径：启用缺陷规则后生成并看到注入提醒", async
   // 概览页签展示生成提醒：缺失字段注入警告
   await expect(page.getByText("生成提醒")).toBeVisible()
   await expect(page.getByText(/已注入 1 条缺失字段/)).toBeVisible()
+  await expect(page.getByText("质量缺陷明细")).toBeVisible()
+  await expect(page.getByText(/实际 1 \/ 请求 1 条/)).toBeVisible()
+  await expect(page.getByText(/dc-0001|rack-0001|server-0001/)).toBeVisible()
+
+  const reportDownload = page.waitForEvent("download")
+  await page.getByRole("button", { name: "下载完整质量报告" }).click()
+  await expect((await reportDownload).suggestedFilename()).toMatch(/quality-report\.json$/)
+})
+
+test("规格可下载、从旧数据集复用、换 seed 后再导入", async ({ page }) => {
+  await login(page)
+  await page.goto("/create")
+  await page
+    .locator("div", { hasText: "小型数据中心" })
+    .getByRole("button", { name: "使用此模板" })
+    .first()
+    .click()
+  await page.getByRole("button", { name: "生成数据集", exact: true }).click()
+  await page.waitForURL(/\/datasets\/\d+/)
+
+  const specDownload = page.waitForEvent("download")
+  await page.getByRole("button", { name: "下载规格", exact: true }).click()
+  const downloaded = await specDownload
+  expect(downloaded.suggestedFilename()).toMatch(/dataset-\d+-spec\.json$/)
+  const downloadedPath = await downloaded.path()
+  expect(downloadedPath).not.toBeNull()
+
+  await page.getByRole("button", { name: "基于此规格新建" }).click()
+  await expect(page).toHaveURL(/\/create$/)
+  await expect(page.getByText(/已从数据集「小型数据中心」复制规格/)).toBeVisible()
+  const seedInput = page.getByLabel("随机种子（seed）")
+  const originalSeed = await seedInput.inputValue()
+  await page.getByRole("button", { name: "换一个 seed" }).click()
+  await expect(seedInput).not.toHaveValue(originalSeed)
+
+  await page.getByLabel("GenerationSpec JSON 文件").setInputFiles(downloadedPath!)
+  await expect(page.getByText(/已导入并校验/)).toBeVisible()
+  await expect(seedInput).toHaveValue(originalSeed)
+})
+
+test("应用关系模板会给每个应用生成一到多条真实关系", async ({ page }) => {
+  await login(page)
+  await page.goto("/create")
+  await page
+    .locator('[data-slot="card"]', { hasText: "应用与数据库" })
+    .getByRole("button", { name: "使用此模板" })
+    .click()
+
+  await expect(page.getByLabel("关系 1 最少连接数")).toHaveValue("1")
+  await expect(page.getByLabel("关系 1 最多连接数")).toHaveValue("3")
+  await page.getByRole("button", { name: "生成数据集", exact: true }).click()
+  await page.waitForURL(/\/datasets\/(\d+)/)
+  const datasetId = Number(page.url().match(/\/datasets\/(\d+)/)?.[1])
+
+  const response = await page.request.get(
+    `/api/v1/datasets/${datasetId}/relations?type=uses&page_size=200`,
+    { headers: { Authorization: "Bearer e2e-test-key" } },
+  )
+  expect(response.ok()).toBeTruthy()
+  const payload = await response.json()
+  const counts = new Map<string, number>()
+  for (const relation of payload.items) {
+    counts.set(relation.from_id, (counts.get(relation.from_id) ?? 0) + 1)
+  }
+  expect(counts.size).toBe(40)
+  expect([...counts.values()].every((count) => count >= 1 && count <= 3)).toBe(true)
+  expect([...counts.values()].some((count) => count > 1)).toBe(true)
 })

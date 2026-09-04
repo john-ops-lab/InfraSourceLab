@@ -114,7 +114,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 
 | 类型 | 含义 | 方向示例 |
 | --- | --- | --- |
-| `contains` | 包含 | 数据中心 → 机架 |
+| `contained_in` | 包含于 | 机架 → 数据中心 |
 | `mounted_in` | 安装于 | 物理服务器 → 机架 |
 | `runs_on` | 运行于 | 虚拟机 → 物理服务器 |
 | `depends_on` | 依赖 | 应用 → 数据库等 |
@@ -128,14 +128,14 @@ CI 记录分三层，建议按如下方式映射到目标 CMDB：
 | `id` | 目标系统的外部主键 / 关联键（稳定且确定性生成） |
 | `type` | CI 类别（决定目标系统的对象模型） |
 | `name` | 显示名 / 主机名 |
-| `attributes.*` | 业务属性，如 `ip_address`、`serial_number`、`status`、`cpu_cores`、`memory_gb`、`os_name` |
-| `tags.*` | 标签，如 `env`、`region`、`owner` |
+| `attributes.*` | 业务属性，如 `ip_address`、`serial_number`、`status`、`cpu_cores`、`memory_gib`、`os_name` |
+| `tags.*` | 标签，如 `environment` |
 
 注意：
 
 - 数据集可能启用了数据质量缺陷（缺失字段、大小写漂移、重复记录、错误值），
-  用于演练数据治理。`GET /api/v1/datasets/$DATASET_ID` 的 `warnings`
-  字段会列出注入了哪些缺陷及其数量，接入方可据此决定清洗策略。
+  用于演练数据治理。`GET /api/v1/datasets/$DATASET_ID` 的 `quality_report`
+  会精确列出缺陷类型、字段、请求/实际数量和全部受影响 CI ID；`warnings` 提供简短摘要。
 - 相同 `seed` + 相同规格生成的数据完全一致，可安全做幂等同步（以 `id` 为键 upsert）。
 
 ## 7. 其他常用接口
@@ -148,7 +148,7 @@ curl -s -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/datasets/$DATASET_ID/sum
 curl -s -H "Authorization: Bearer $TOKEN" \
   "$BASE/api/v1/datasets/$DATASET_ID/topology?center=server-0001"
 
-# 导出文件（json / csv / xlsx）
+# 导出文件（json / csv / xlsx；CSV ZIP 内含 spec.json 与 quality_report.csv）
 curl -s -O -J -H "Authorization: Bearer $TOKEN" \
   "$BASE/api/v1/datasets/$DATASET_ID/export?format=csv"
 ```

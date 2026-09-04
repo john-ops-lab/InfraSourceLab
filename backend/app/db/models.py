@@ -1,7 +1,4 @@
-"""SQLAlchemy 数据模型。核心数据三张表 + 账户/令牌/设置三张表。
-
-新增表通过 create_all 幂等创建，不改变 user_version=1 的版本约定。
-"""
+"""SQLAlchemy 数据模型。持久化结构由 PRAGMA user_version 显式管理。"""
 
 from datetime import datetime, timezone
 
@@ -39,6 +36,7 @@ class Dataset(Base):
     record_count: Mapped[int] = mapped_column(Integer, nullable=False)
     relation_count: Mapped[int] = mapped_column(Integer, nullable=False)
     warnings_json: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
+    quality_report_json: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
 
 

@@ -98,6 +98,27 @@ def test_create_dataset_rejects_invalid_spec(client, auth):
     assert "未知 CI 类型" in response.text
 
 
+def test_validate_imported_spec_normalizes_without_creating_dataset(client, auth):
+    raw = default_proposal().spec
+    raw["name"] = "  导入的规格  "
+    response = client.post("/api/v1/specs/validate", headers=auth, json={"spec": raw})
+    assert response.status_code == 200, response.text
+    assert response.json()["spec"]["name"] == "导入的规格"
+    assert response.json()["spec"]["relations"][0]["min_links"] == 1
+    assert response.json()["spec"]["relations"][0]["max_links"] == 1
+    assert client.get("/api/v1/datasets", headers=auth).json()["total"] == 0
+
+
+def test_validate_imported_spec_returns_readable_errors(client, auth):
+    response = client.post(
+        "/api/v1/specs/validate",
+        headers=auth,
+        json={"spec": {"name": "坏规格", "seed": 1, "ci_types": [{"type": "ghost", "count": 1}]}},
+    )
+    assert response.status_code == 422
+    assert "未知 CI 类型" in response.text
+
+
 def test_template_flow_without_ai(tmp_path):
     """AI 未配置时，模板仍可创建数据集。"""
     app = create_app(make_settings(tmp_path))  # 真 Provider，未配置

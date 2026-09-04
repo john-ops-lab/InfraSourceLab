@@ -1,8 +1,8 @@
 """导出构建器。
 
 - JSON：元数据、CI 和关系；
-- CSV：ZIP 打包的多文件（summary.csv、ci_<type>.csv、relations.csv）；
-- XLSX：摘要、各 CI 类型和关系工作表。
+- CSV：ZIP 打包的多文件（summary、spec、CI、关系、质量报告）；
+- XLSX：摘要、各 CI 类型、关系和质量报告工作表。
 
 安全约束：
 - 对以 =、+、-、@ 开头的单元格做公式注入转义；
@@ -51,8 +51,39 @@ def _relation_payload(record) -> dict:
     }
 
 
+def _iter_quality_rows(quality_report: list[dict]):
+    for report in quality_report:
+        sources = report.get("source_by_duplicate_id", {})
+        applied_value = report.get("applied_value")
+        affected_ids = report.get("affected_ids", [])
+        if not affected_ids:
+            yield [
+                report.get("kind", ""),
+                report.get("ci_type", ""),
+                report.get("field") or "",
+                report.get("requested_count", 0),
+                report.get("affected_count", 0),
+                "",
+                "",
+                applied_value if applied_value is not None else "",
+            ]
+            continue
+        for ci_id in affected_ids:
+            yield [
+                report.get("kind", ""),
+                report.get("ci_type", ""),
+                report.get("field") or "",
+                report.get("requested_count", 0),
+                report.get("affected_count", 0),
+                ci_id,
+                sources.get(ci_id, ""),
+                applied_value if applied_value is not None else "",
+            ]
+
+
 def build_json_export(session: Session, dataset: Dataset) -> tuple[bytes, str]:
     summary = dataset_summary(session, dataset)
+    summary["quality_report"] = json.loads(dataset.quality_report_json)
     payload = {
         "dataset": summary,
         "cis": [_ci_payload(ci) for ci in iter_all_cis(session, dataset.id)],
@@ -81,6 +112,28 @@ def build_csv_export(session: Session, dataset: Dataset) -> tuple[bytes, str]:
         for ci_type, count in summary["ci_counts_by_type"].items():
             writer.writerow([ci_type, count])
         archive.writestr("summary.csv", summary_rows.getvalue().encode("utf-8"))
+        archive.writestr(
+            "spec.json",
+            json.dumps(summary["spec"], ensure_ascii=False, indent=2).encode("utf-8"),
+        )
+
+        quality_rows = io.StringIO()
+        writer = csv.writer(quality_rows)
+        writer.writerow(
+            [
+                "kind",
+                "ci_type",
+                "field",
+                "requested_count",
+                "affected_count",
+                "ci_id",
+                "source_id",
+                "applied_value",
+            ]
+        )
+        for row in _iter_quality_rows(json.loads(dataset.quality_report_json)):
+            writer.writerow([_safe_cell(value) for value in row])
+        archive.writestr("quality_report.csv", quality_rows.getvalue().encode("utf-8"))
 
         by_type: dict[str, list] = {}
         for record in iter_all_cis(session, dataset.id):
@@ -174,6 +227,22 @@ def build_xlsx_export(session: Session, dataset: Dataset) -> tuple[bytes, str]:
     relations_sheet.append(["id", "type", "from_id", "to_id"])
     for record in iter_all_relations(session, dataset.id):
         relations_sheet.append([record.relation_id, record.type, record.from_ci_id, record.to_ci_id])
+
+    quality_sheet = workbook.create_sheet("质量报告")
+    quality_sheet.append(
+        [
+            "kind",
+            "ci_type",
+            "field",
+            "requested_count",
+            "affected_count",
+            "ci_id",
+            "source_id",
+            "applied_value",
+        ]
+    )
+    for row in _iter_quality_rows(json.loads(dataset.quality_report_json)):
+        quality_sheet.append([_safe_cell(value) for value in row])
 
     buffer = io.BytesIO()
     workbook.save(buffer)

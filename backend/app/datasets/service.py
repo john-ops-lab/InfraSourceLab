@@ -38,6 +38,7 @@ def create_dataset(session: Session, spec: GenerationSpec, prompt: str = "") -> 
         record_count=len(result.cis),
         relation_count=len(result.relations),
         warnings_json=json.dumps(result.warnings, ensure_ascii=False),
+        quality_report_json=json.dumps(result.quality_report, ensure_ascii=False),
     )
     try:
         session.add(dataset)

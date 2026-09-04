@@ -48,6 +48,76 @@ def test_different_seed_changes_data():
     assert [ci.attributes for ci in first.cis] != [ci.attributes for ci in second.cis]
 
 
+def test_generated_catalog_fields_stay_coherent():
+    """品牌、型号、环境和默认端口必须来自同一条目录记录，不能各自乱抽。"""
+    raw = make_spec(
+        ci_types=[
+            {"type": "physical_server", "count": 120},
+            {"type": "network_device", "count": 120},
+            {"type": "database", "count": 120},
+            {"type": "middleware", "count": 120},
+        ],
+        relations=[],
+        seed=20260825,
+    )
+    result = generate_dataset(parse_and_validate(raw))
+
+    server_models = {
+        "Dell": {"PowerEdge R750"},
+        "HPE": {"ProLiant DL380 Gen11"},
+        "Lenovo": {"ThinkSystem SR650 V3"},
+        "Inspur": {"NF5280M6"},
+        "Huawei": {"FusionServer Pro 2288H V6"},
+        "Supermicro": {"SuperServer SYS-620U-TNR"},
+    }
+    network_catalog = {
+        ("Cisco", "Catalyst 9300", "access-switch"),
+        ("Huawei", "CloudEngine CE6860", "access-switch"),
+        ("Arista", "7280R3", "core-switch"),
+        ("Juniper", "QFX5120", "core-switch"),
+        ("H3C", "S6850", "access-switch"),
+        ("Cisco", "ISR 4451", "router"),
+        ("Fortinet", "FortiGate 200F", "firewall"),
+        ("F5", "BIG-IP i5800", "load-balancer"),
+    }
+    database_ports = {
+        "PostgreSQL": 5432,
+        "MySQL": 3306,
+        "Oracle": 1521,
+        "SQLServer": 1433,
+        "MongoDB": 27017,
+    }
+    middleware_ports = {
+        "Nginx": 80,
+        "Kafka": 9092,
+        "RabbitMQ": 5672,
+        "Tomcat": 8080,
+        "Elasticsearch": 9200,
+        "ZooKeeper": 2181,
+    }
+    env_prefixes = {
+        "production": "prod-",
+        "staging": "stg-",
+        "development": "dev-",
+        "test": "test-",
+    }
+
+    for ci in result.cis:
+        attrs = ci.attributes
+        if ci.type == "physical_server":
+            assert attrs["model"] in server_models[attrs["vendor"]]
+            assert attrs["hostname"].startswith(env_prefixes[attrs["environment"]])
+        elif ci.type == "network_device":
+            assert (attrs["vendor"], attrs["model"], attrs["device_role"]) in network_catalog
+            assert attrs["hostname"].startswith(env_prefixes[attrs["environment"]])
+        elif ci.type == "database":
+            assert attrs["port"] == database_ports[attrs["engine"]]
+            assert attrs["host"].startswith(env_prefixes[attrs["environment"]])
+        elif ci.type == "middleware":
+            assert attrs["port"] == middleware_ports[attrs["type"]]
+            assert attrs["host"].startswith(env_prefixes[attrs["environment"]])
+
+
 def test_coverage_from_gives_every_source_one_edge():
     raw = make_spec(
         ci_types=[
@@ -82,6 +152,53 @@ def test_coverage_to_gives_every_target_one_edge():
     db_ids = {ci.id for ci in result.cis if ci.type == "database"}
     assert targets == db_ids
     assert len(result.relations) == 3
+
+
+def test_relation_multiplicity_gives_every_source_multiple_unique_targets():
+    raw = make_spec(
+        ci_types=[
+            {"type": "application", "count": 8},
+            {"type": "database", "count": 4},
+        ],
+        relations=[
+            {"type": "uses", "from_type": "application", "to_type": "database",
+             "strategy": "balanced", "coverage": "from", "min_links": 2, "max_links": 3},
+        ],
+    )
+    result = generate_dataset(parse_and_validate(raw))
+    targets_by_source: dict[str, set[str]] = {}
+    for rel in result.relations:
+        targets_by_source.setdefault(rel.from_id, set()).add(rel.to_id)
+
+    app_ids = {ci.id for ci in result.cis if ci.type == "application"}
+    assert set(targets_by_source) == app_ids
+    assert all(2 <= len(targets) <= 3 for targets in targets_by_source.values())
+    assert len(result.relations) == sum(len(targets) for targets in targets_by_source.values())
+
+
+def test_random_seeded_multiplicity_is_reproducible_and_respects_coverage_to():
+    raw = make_spec(
+        ci_types=[
+            {"type": "application", "count": 8},
+            {"type": "database", "count": 4},
+        ],
+        relations=[
+            {"type": "uses", "from_type": "application", "to_type": "database",
+             "strategy": "random_seeded", "coverage": "to", "min_links": 2, "max_links": 3},
+        ],
+    )
+    first = generate_dataset(parse_and_validate(raw))
+    second = generate_dataset(parse_and_validate(raw))
+    first_edges = [(rel.from_id, rel.to_id) for rel in first.relations]
+    second_edges = [(rel.from_id, rel.to_id) for rel in second.relations]
+    assert first_edges == second_edges
+
+    sources_by_target: dict[str, set[str]] = {}
+    for from_id, to_id in first_edges:
+        sources_by_target.setdefault(to_id, set()).add(from_id)
+    db_ids = {ci.id for ci in first.cis if ci.type == "database"}
+    assert set(sources_by_target) == db_ids
+    assert all(2 <= len(sources) <= 3 for sources in sources_by_target.values())
 
 
 def test_balanced_distributes_evenly():

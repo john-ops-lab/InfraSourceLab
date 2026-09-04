@@ -1,10 +1,12 @@
 """导出：JSON 与 CSV 保留 ID 与关系引用，且与 API 数据一致；XLSX 可生成。"""
 
+import csv
 import io
 import json
 import zipfile
 
 import pytest
+from openpyxl import load_workbook
 
 from conftest import default_proposal
 
@@ -54,6 +56,8 @@ def test_csv_export_zip_structure(client, auth, dataset_id):
     names = set(archive.namelist())
     assert "summary.csv" in names
     assert "relations.csv" in names
+    assert "spec.json" in names
+    assert "quality_report.csv" in names
     assert any(name.startswith("ci_") for name in names)
 
     relations_csv = archive.read("relations.csv").decode("utf-8")
@@ -61,6 +65,49 @@ def test_csv_export_zip_structure(client, auth, dataset_id):
 
     vm_csv = archive.read("ci_virtual_machine.csv").decode("utf-8")
     assert "vm-0001" in vm_csv
+
+    spec = json.loads(archive.read("spec.json"))
+    assert spec["seed"] == 42
+
+
+def test_exports_include_exact_quality_report(client, auth):
+    spec = default_proposal().spec
+    spec["quality_defects"] = [
+        {"kind": "missing_field", "ci_type": "physical_server", "field": "status", "count": 8},
+        {"kind": "wrong_value", "ci_type": "physical_server", "field": "status", "count": 2},
+    ]
+    created = client.post("/api/v1/datasets", headers=auth, json={"spec": spec}).json()
+    dataset_id = created["id"]
+
+    json_payload = client.get(
+        f"/api/v1/datasets/{dataset_id}/export", headers=auth, params={"format": "json"}
+    ).json()
+    reports = json_payload["dataset"]["quality_report"]
+    assert reports[0]["affected_count"] == 8
+    assert len(reports[0]["affected_ids"]) == 8
+    assert reports[1]["requested_count"] == 2
+    assert reports[1]["affected_count"] == 0
+
+    csv_response = client.get(
+        f"/api/v1/datasets/{dataset_id}/export", headers=auth, params={"format": "csv"}
+    )
+    archive = zipfile.ZipFile(io.BytesIO(csv_response.content))
+    report_rows = list(
+        csv.DictReader(io.StringIO(archive.read("quality_report.csv").decode("utf-8")))
+    )
+    for ci_id in reports[0]["affected_ids"]:
+        assert any(row["ci_id"] == ci_id for row in report_rows)
+    zero_row = next(row for row in report_rows if row["kind"] == "wrong_value")
+    assert zero_row["requested_count"] == "2"
+    assert zero_row["affected_count"] == "0"
+    assert zero_row["ci_id"] == ""
+
+    xlsx_response = client.get(
+        f"/api/v1/datasets/{dataset_id}/export", headers=auth, params={"format": "xlsx"}
+    )
+    workbook = load_workbook(io.BytesIO(xlsx_response.content), read_only=True)
+    quality_rows = list(workbook["质量报告"].iter_rows(values_only=True))
+    assert ("wrong_value", "physical_server", "status", "2", "0", None, None, "unknown") in quality_rows
 
 
 def test_xlsx_export_generates(client, auth, dataset_id):

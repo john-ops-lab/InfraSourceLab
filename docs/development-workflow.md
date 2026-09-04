@@ -81,7 +81,7 @@ Issue #1 固定为一次性：
 
 ### 3.5 SQLite 模式版本
 
-使用 `PRAGMA user_version = 1`。空库自动初始化；未知非零版本明确拒绝启动并提示备份、删除后重建。Issue #1 不建设 Alembic 或自动迁移链，Issue #2 也不承担数据库迁移。
+当前使用 `PRAGMA user_version = 2`。空库自动初始化；v1 只执行已测试的 `quality_report_json` 加列迁移；其他未知非零版本明确拒绝启动并提示备份。项目不建设 Alembic 或通用自动迁移链。
 
 ## 4. 前端工具约束
 
@@ -149,7 +149,7 @@ coverage=from|to
 受控 search_text，不直接模糊搜索整个 attributes_json。
 
 固定数据库版本策略：
-PRAGMA user_version=1；未知版本提示备份和重建，不做自动迁移。
+PRAGMA user_version=2；v1 可保留数据迁移，未知版本提示备份，不做通用自动迁移。
 
 前端遵循 docs/qoder-frontend-tooling.md：
 实际使用 UI Skills、shadcn/ui、Chrome DevTools MCP 和 Playwright。
@@ -243,7 +243,7 @@ RBAC / OAuth / SSO
 - 万级数据冒烟测试；
 - 生成失败时的事务回滚；
 - AI 未配置时的模板路径；
-- `PRAGMA user_version` 的空库、版本 1 和未知版本测试。
+- `PRAGMA user_version` 的空库 v2、v1→v2 保留数据迁移和未知版本测试。
 
 XLSX、自定义类型和额外模板不得阻塞核心闭环。
 

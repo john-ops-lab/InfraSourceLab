@@ -121,6 +121,47 @@ def test_same_type_relation_with_single_ci_rejected():
     assert any("自环" in item for item in excinfo.value.errors)
 
 
+def test_relation_multiplicity_must_fit_available_unique_counterparts():
+    raw = base_spec(
+        ci_types=[
+            {"type": "application", "count": 3},
+            {"type": "database", "count": 2},
+        ],
+        relations=[
+            {"type": "uses", "from_type": "application", "to_type": "database",
+             "strategy": "balanced", "coverage": "from", "min_links": 2, "max_links": 3},
+        ],
+    )
+    with pytest.raises(SpecValidationError) as excinfo:
+        parse_and_validate(raw)
+    assert any("最多只能连接 2" in item for item in excinfo.value.errors)
+
+
+def test_relation_multiplicity_uses_source_capacity_when_covering_targets():
+    raw = base_spec(
+        ci_types=[
+            {"type": "application", "count": 2},
+            {"type": "database", "count": 4},
+        ],
+        relations=[
+            {"type": "uses", "from_type": "application", "to_type": "database",
+             "strategy": "balanced", "coverage": "to", "min_links": 2, "max_links": 3},
+        ],
+    )
+    with pytest.raises(SpecValidationError) as excinfo:
+        parse_and_validate(raw)
+    assert any("最多只能连接 2" in item for item in excinfo.value.errors)
+
+
+def test_relation_multiplicity_rejects_inverted_range():
+    raw = base_spec()
+    raw["relations"][0]["min_links"] = 3
+    raw["relations"][0]["max_links"] = 2
+    with pytest.raises(SpecValidationError) as excinfo:
+        parse_and_validate(raw)
+    assert any("min_links" in item and "max_links" in item for item in excinfo.value.errors)
+
+
 def test_unknown_override_param_diagnosed():
     raw = base_spec()
     raw["ci_types"][0]["overrides"] = {"color": "red"}
