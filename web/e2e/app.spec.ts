@@ -190,6 +190,62 @@ test("拓扑路径：查看节点 → 点击详情 → 聚焦邻居", async ({ p
   await expect(page.getByText(/正在聚焦节点/)).not.toBeVisible()
 })
 
+test("拓扑节点详情显示完整记录，内容超高时在面板内部滚动", async ({ page }) => {
+  await login(page)
+
+  const createResponse = await page.request.post("/api/v1/datasets", {
+    headers: { Authorization: "Bearer e2e-test-key" },
+    data: {
+      spec: {
+        name: "e2e-topology-detail",
+        description: "验证拓扑详情完整属性与滚动",
+        seed: 20260904,
+        ci_types: [{ type: "physical_server", count: 1 }],
+        relations: [],
+      },
+    },
+  })
+  expect(createResponse.ok()).toBeTruthy()
+  const dataset = await createResponse.json()
+
+  const ciResponse = await page.request.get(`/api/v1/datasets/${dataset.id}/cis`, {
+    headers: { Authorization: "Bearer e2e-test-key" },
+  })
+  expect(ciResponse.ok()).toBeTruthy()
+  const ci = (await ciResponse.json()).items[0]
+
+  await page.setViewportSize({ width: 1280, height: 480 })
+  await page.goto(`/datasets/${dataset.id}`)
+  await page.getByRole("tab", { name: "拓扑" }).click()
+  await page.locator(".react-flow__node").first().click()
+
+  const detail = page.getByRole("dialog")
+  expect(await detail.evaluate((element) => element.getBoundingClientRect().width)).toBeGreaterThanOrEqual(500)
+  await expect(detail.getByRole("heading", { name: `全部属性（${Object.keys(ci.attributes).length}）` })).toBeVisible()
+  await expect(detail.locator('[data-detail-kind="basic"]')).toHaveCount(3)
+  await expect(detail.locator('[data-detail-kind="attribute"]')).toHaveCount(
+    Object.keys(ci.attributes).length,
+  )
+  await expect(detail.locator('[data-detail-kind="tag"]')).toHaveCount(Object.keys(ci.tags).length)
+
+  for (const [key, value] of Object.entries(ci.attributes)) {
+    const row = detail.locator(`[data-detail-kind="attribute"][data-detail-key="${key}"]`)
+    await expect(row).toContainText(String(value))
+  }
+
+  const scrollViewport = detail.locator('[data-slot="scroll-area-viewport"]')
+  const scrollBar = detail.locator('[data-slot="scroll-area-scrollbar"]')
+  await expect(scrollViewport).toBeVisible()
+  await expect(scrollBar).toBeVisible()
+  expect(
+    await scrollViewport.evaluate((element) => element.scrollHeight > element.clientHeight),
+  ).toBe(true)
+  await scrollViewport.evaluate((element) => {
+    element.scrollTop = element.scrollHeight
+  })
+  await expect(detail.getByRole("heading", { name: `全部标签（${Object.keys(ci.tags).length}）` })).toBeVisible()
+})
+
 test("拓扑默认从顶层折叠，点击节点逐层展开", async ({ page }) => {
   await login(page)
 

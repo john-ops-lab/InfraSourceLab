@@ -13,7 +13,7 @@
 [![Backend](https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square)](backend/)
 [![Frontend](https://img.shields.io/badge/frontend-React%2019-61dafb?style=flat-square)](web/)
 [![CI](https://github.com/john-ops-lab/InfraSourceLab/actions/workflows/ci.yml/badge.svg)](https://github.com/john-ops-lab/InfraSourceLab/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-119%20backend%20%7C%2027%20unit%20%7C%2014%20e2e-brightgreen?style=flat-square)](docs/status.md)
+[![Tests](https://img.shields.io/badge/tests-119%20backend%20%7C%2027%20unit%20%7C%2015%20e2e-brightgreen?style=flat-square)](docs/status.md)
 [![Docker](https://img.shields.io/badge/docker-single%20image-2496ed?style=flat-square)](Dockerfile)
 
 [30 秒理解](#-30-秒理解) · [快速开始](#-快速开始) · [REST API](#-rest-api) · [项目文档](#-项目文档)
@@ -193,7 +193,7 @@ flowchart LR
 ```bash
 cd backend && uv run pytest        # 119 个后端用例
 cd web && npm test                 # 27 个 Vitest 单元测试
-cd web && npx playwright test      # 14 个浏览器端到端用例
+cd web && npx playwright test      # 15 个浏览器端到端用例
 ```
 
 ## 📚 项目文档

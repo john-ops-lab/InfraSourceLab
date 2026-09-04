@@ -8,7 +8,7 @@
 
 - 后端：119 个 pytest；
 - 前端：27 个 Vitest；
-- 端到端：14 个 Playwright；
+- 端到端：15 个 Playwright；
 - GitHub Actions：PR 与 `main` 推送均运行后端、前端和端到端三组检查；
 - 数据库格式：SQLite `PRAGMA user_version = 2`；v1 启动时执行保留数据的单步迁移。
 
@@ -46,7 +46,14 @@ Issue #1 的 MVP 闭环已可运行：
 - CSV ZIP 额外包含 `spec.json` 和 `quality_report.csv`，JSON/XLSX 同步包含质量报告；
 - SQLite v2 为 `datasets` 增加 `quality_report_json`；v1 自动执行幂等的加列迁移，旧数据保留并使用空报告。
 
-当前验证基线：后端 119 passed；Vitest 27 passed；Playwright Chromium 14 passed。GitHub PR/CI 与合并状态以对应 PR 为准，不能由本地结果代替。
+当前验证基线：后端 119 passed；Vitest 27 passed；Playwright Chromium 15 passed。GitHub PR/CI 与合并状态以对应 PR 为准，不能由本地结果代替。
+
+### 2026-09-04：拓扑节点详情布局修复
+
+- 右侧详情面板加宽为桌面 576px、手机接近全宽，字段在窄屏自动改为上下排布；
+- 基础信息、全部属性、全部标签分别显示项目总数，并逐项完整渲染接口返回值，不截断长文本或结构化值；
+- 标题与“聚焦邻居”操作固定，正文使用常驻纵向滚动条，内容过高时只滚动面板内部；
+- 新增 Playwright 用例，核对基础字段数量、每个属性值、标签数量、面板宽度与真实滚动溢出。
 
 ### 后续特性：管理员登录与 AI 配置页（已实现）
 
