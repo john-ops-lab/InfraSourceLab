@@ -331,7 +331,9 @@ virtual_machine → 虚拟机字段生成器
 application → 应用字段生成器
 ```
 
-字段使用受 seed 控制的伪随机数和 Faker/Mimesis 等成熟库。
+字段使用受 seed 控制的伪随机数和 Faker/Mimesis 等成熟库。每个内置类型默认至少生成
+10 个业务属性（不含顶层 `id`、`type`、`name` 和 `tags`），字段清单由
+`CI_ATTRIBUTE_KINDS` 统一约束，生成引擎在持久化前执行最小数量检查。
 
 关系规则固定使用：
 

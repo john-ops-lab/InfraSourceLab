@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 
 from ..config import Settings
 from ..limits import MAX_AI_PROMPT_CHARS, MAX_AI_RESPONSE_BYTES
+from ..specs.ci_fields import MIN_DEFAULT_ATTRIBUTES
 from ..specs.models import BUILTIN_CI_TYPES, SpecValidationError, parse_and_validate
 from .config import AIConfigStore
 
@@ -61,6 +62,8 @@ GenerationSpec 规则：
 - name：数据集名称；description：简短说明；seed：整数种子。
 - ci_types：数组，每项 {{"type", "count"}}；type 只能从以下选择：
   {ci_types}
+- 每个新生成的 CI 由本地确定性生成器自动提供至少 {min_default_attributes} 个业务属性
+  （不含顶层 id、name、type 和 tags）；不要自行添加 fields 或 attributes 配置。
 - relations：数组，每项 {{"type", "from_type", "to_type", "strategy", "coverage", "min_links", "max_links"}}：
   - type 只能从以下选择（格式为 标识符=中文名，方向 child_to_parent 表示 from=子、to=父，peer 表示平级）：
 {relation_types}
@@ -94,6 +97,7 @@ def build_default_system_prompt(relation_types: list[dict] | None = None) -> str
     ]
     return DEFAULT_SYSTEM_PROMPT_TEMPLATE.format(
         ci_types=", ".join(BUILTIN_CI_TYPES),
+        min_default_attributes=MIN_DEFAULT_ATTRIBUTES,
         relation_types="\n".join(lines),
     )
 

@@ -6,11 +6,12 @@ ID、字段值、关系和排序。不调用外部服务，不使用图数据库
 
 from dataclasses import dataclass, field
 
+from ..specs.ci_fields import MIN_DEFAULT_ATTRIBUTES
 from ..specs.models import GenerationSpec
 from .ci_types import GENERATORS, GeneratorContext
 from .relations import generate_relations
 
-GENERATOR_VERSION = "1.2.0"
+GENERATOR_VERSION = "1.3.0"
 
 # 稳定 ID 前缀
 ID_PREFIXES = {
@@ -82,6 +83,11 @@ def generate_dataset(spec: GenerationSpec) -> GenerationResult:
             ci_id = build_ci_id(entry.type, index, entry.count)
             attributes = generator(ctx, ci_id)
             name = attributes.pop("name", None) or ci_id
+            if len(attributes) < MIN_DEFAULT_ATTRIBUTES:
+                raise RuntimeError(
+                    f"内置 CI 类型 {entry.type} 只生成了 {len(attributes)} 个业务属性，"
+                    f"至少需要 {MIN_DEFAULT_ATTRIBUTES} 个"
+                )
             if name_prefix:
                 name = f"{name_prefix}-{name}"
             environment = attributes.get("environment", "")

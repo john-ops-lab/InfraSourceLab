@@ -134,94 +134,27 @@ kubernetes_workload
 
 ## 5. 内置字段建议
 
-### 通用字段
+默认清洁生成时，每种内置 CI 都有至少 10 个业务属性。顶层 `id`、`type`、`name`
+和 `tags` 不计入该数量；显式启用 `missing_field` 数据质量缺陷后，命中的记录可以少于
+10 个属性。默认字段合同如下：
 
-```text
-name
-status
-environment
-owner
-description
-tags
-created_at_like_test_value
-```
+| CI 类型 | 默认业务属性 |
+| --- | --- |
+| `data_center` | `location`、`country`、`site_code`、`region`、`timezone`、`tier`、`floor_area_sqm`、`power_capacity_kw`、`cooling_type`、`status`、`environment`、`owner` |
+| `rack` | `asset_tag`、`room`、`row`、`u_height`、`power_capacity_kw`、`current_power_kw`、`cooling_zone`、`temperature_c`、`status`、`environment` |
+| `physical_server` | `hostname`、`serial_number`、`vendor`、`model`、`cpu_cores`、`memory_gib`、`management_ip`、`os_name`、`os_version`、`status`、`environment` |
+| `virtual_machine` | `hostname`、`uuid`、`cpu_cores`、`memory_gib`、`disk_gib`、`ip_address`、`power_state`、`os_name`、`status`、`environment` |
+| `network_device` | `hostname`、`serial_number`、`vendor`、`model`、`device_role`、`port_count`、`management_ip`、`software_version`、`status`、`environment` |
+| `ip_address` | `address`、`prefix_length`、`ip_version`、`address_type`、`allocation_type`、`dns_name`、`gateway`、`vlan_id`、`status`、`environment` |
+| `application` | `code`、`owner`、`environment`、`criticality`、`lifecycle_status`、`version`、`language`、`framework`、`deployment_model`、`business_unit` |
+| `database` | `engine`、`version`、`host`、`port`、`database_name`、`charset`、`storage_gib`、`high_availability`、`environment`、`status` |
+| `middleware` | `type`、`version`、`host`、`port`、`instance_name`、`protocol`、`cluster_mode`、`instance_count`、`environment`、`status` |
+| `kubernetes_cluster` | `version`、`environment`、`status`、`cni`、`cluster_name`、`api_endpoint`、`pod_cidr`、`service_cidr`、`distribution`、`container_runtime` |
+| `kubernetes_node` | `role`、`version`、`status`、`environment`、`hostname`、`internal_ip`、`cpu_cores`、`memory_gib`、`disk_gib`、`container_runtime`、`os_name` |
+| `kubernetes_workload` | `kind`、`namespace`、`replicas`、`image`、`status`、`workload_name`、`uid`、`available_replicas`、`restart_policy`、`service_account`、`environment` |
 
-时间字段是生成的业务测试值，不能使用真实系统创建时间影响确定性。
-
-### 物理服务器
-
-```text
-hostname
-serial_number
-vendor
-model
-cpu_cores
-memory_gib
-management_ip
-os_name
-os_version
-```
-
-### 虚拟机
-
-```text
-hostname
-uuid
-cpu_cores
-memory_gib
-ip_address
-power_state
-os_name
-```
-
-### 网络设备
-
-```text
-hostname
-serial_number
-vendor
-model
-device_role
-management_ip
-software_version
-```
-
-### 应用
-
-```text
-code
-name
-owner
-environment
-criticality
-lifecycle_status
-```
-
-### 数据库
-
-```text
-name
-engine
-version
-host
-port
-environment
-```
-
-### 中间件
-
-```text
-name
-type
-version
-host
-port
-environment
-```
-
-### Kubernetes
-
-只提供配置数据测试需要的简单字段，不复制完整 Kubernetes API 对象。
+这些字段用于配置数据测试，不复制厂商完整 API 或 Kubernetes API 对象。任何时间类
+测试值都必须由 seed 确定，不能读取真实系统时间破坏可复现性。
 
 ## 6. 自定义类型
 

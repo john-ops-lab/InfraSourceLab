@@ -6,6 +6,7 @@
 - 不读写数据库。
 """
 
+import ipaddress
 import random
 import uuid
 from dataclasses import dataclass, field
@@ -39,27 +40,47 @@ OS_CATALOG = [
     ("CentOS Stream 9", "9"),
 ]
 DATABASE_CATALOG = [
-    ("PostgreSQL", ("14.12", "15.7", "16.3"), 5432),
-    ("MySQL", ("8.0.37", "8.4.0"), 3306),
-    ("Oracle", ("19c", "21c"), 1521),
-    ("SQLServer", ("2019", "2022"), 1433),
-    ("MongoDB", ("6.0.15", "7.0.11"), 27017),
+    ("PostgreSQL", ("14.12", "15.7", "16.3"), 5432, "UTF8"),
+    ("MySQL", ("8.0.37", "8.4.0"), 3306, "utf8mb4"),
+    ("Oracle", ("19c", "21c"), 1521, "AL32UTF8"),
+    ("SQLServer", ("2019", "2022"), 1433, "UTF8"),
+    ("MongoDB", ("6.0.15", "7.0.11"), 27017, "UTF8"),
 ]
 MIDDLEWARE_CATALOG = [
-    ("Nginx", ("1.24.0", "1.26.1"), 80),
-    ("Kafka", ("3.6.2", "3.7.0"), 9092),
-    ("RabbitMQ", ("3.12.14", "3.13.3"), 5672),
-    ("Tomcat", ("9.0.89", "10.1.24"), 8080),
-    ("Elasticsearch", ("8.13.4", "8.14.1"), 9200),
-    ("ZooKeeper", ("3.8.4", "3.9.2"), 2181),
+    ("Nginx", ("1.24.0", "1.26.1"), 80, "http"),
+    ("Kafka", ("3.6.2", "3.7.0"), 9092, "tcp"),
+    ("RabbitMQ", ("3.12.14", "3.13.3"), 5672, "amqp"),
+    ("Tomcat", ("9.0.89", "10.1.24"), 8080, "http"),
+    ("Elasticsearch", ("8.13.4", "8.14.1"), 9200, "http"),
+    ("ZooKeeper", ("3.8.4", "3.9.2"), 2181, "tcp"),
 ]
 DATA_CENTER_CATALOG = [
-    ("北京亦庄数据中心", "中国"),
-    ("上海临港数据中心", "中国"),
-    ("深圳光明数据中心", "中国"),
-    ("Singapore Central Data Center", "Singapore"),
-    ("Frankfurt West Data Center", "Germany"),
+    ("北京亦庄数据中心", "中国", "CN-BJS-01", "cn-north", "Asia/Shanghai"),
+    ("上海临港数据中心", "中国", "CN-SHA-01", "cn-east", "Asia/Shanghai"),
+    ("深圳光明数据中心", "中国", "CN-SZX-01", "cn-south", "Asia/Shanghai"),
+    (
+        "Singapore Central Data Center",
+        "Singapore",
+        "SG-SIN-01",
+        "ap-southeast",
+        "Asia/Singapore",
+    ),
+    (
+        "Frankfurt West Data Center",
+        "Germany",
+        "DE-FRA-01",
+        "eu-central",
+        "Europe/Berlin",
+    ),
 ]
+APP_STACKS = [
+    ("Java", "Spring Boot"),
+    ("Python", "FastAPI"),
+    ("Go", "Gin"),
+    ("Node.js", "NestJS"),
+    (".NET", "ASP.NET Core"),
+]
+BUSINESS_UNITS = ["commerce", "finance", "platform", "operations", "risk"]
 ENVIRONMENTS = ["production", "staging", "development", "test"]
 STATUSES = ["active", "active", "active", "maintenance", "inactive"]
 CRITICALITIES = ["high", "medium", "low"]
@@ -117,10 +138,17 @@ def _status(ctx: GeneratorContext) -> str:
 
 
 def generate_data_center(ctx: GeneratorContext, ci_id: str) -> dict:
-    location, country = ctx.pick(DATA_CENTER_CATALOG)
+    location, country, site_code, region, timezone = ctx.pick(DATA_CENTER_CATALOG)
     return {
         "location": location,
         "country": country,
+        "site_code": site_code,
+        "region": region,
+        "timezone": timezone,
+        "tier": ctx.rng.choice(["Tier III", "Tier III", "Tier IV"]),
+        "floor_area_sqm": ctx.rng.choice([2000, 3500, 5000, 8000, 12000]),
+        "power_capacity_kw": ctx.rng.choice([1500, 2500, 4000, 6000, 10000]),
+        "cooling_type": ctx.rng.choice(["air-cooled", "liquid-assisted"]),
         "status": _status(ctx),
         "environment": _environment(ctx),
         "owner": ctx.fake.name(),
@@ -128,8 +156,16 @@ def generate_data_center(ctx: GeneratorContext, ci_id: str) -> dict:
 
 
 def generate_rack(ctx: GeneratorContext, ci_id: str) -> dict:
+    power_capacity_kw = ctx.rng.choice([6, 8, 10, 12])
     return {
+        "asset_tag": f"RACK-{ctx.seed % 1000:03d}-{ci_id.rsplit('-', 1)[-1]}",
+        "room": f"ROOM-{ctx.rng.choice(['A', 'B', 'C', 'D'])}",
+        "row": f"R{ctx.rng.randrange(1, 13):02d}",
         "u_height": ctx.rng.choice([42, 45, 47]),
+        "power_capacity_kw": power_capacity_kw,
+        "current_power_kw": ctx.rng.randrange(2, power_capacity_kw),
+        "cooling_zone": f"CZ-{ctx.rng.randrange(1, 5)}",
+        "temperature_c": ctx.rng.randrange(18, 28),
         "status": _status(ctx),
         "environment": _environment(ctx),
     }
@@ -163,6 +199,7 @@ def generate_virtual_machine(ctx: GeneratorContext, ci_id: str) -> dict:
         "uuid": ctx.deterministic_uuid(ci_id),
         "cpu_cores": ctx.rng.choice([2, 4, 8, 16, 32]),
         "memory_gib": ctx.rng.choice([4, 8, 16, 32, 64]),
+        "disk_gib": ctx.rng.choice([40, 80, 120, 200, 500]),
         "ip_address": ctx.next_ip(),
         "power_state": ctx.rng.choice(["poweredOn", "poweredOn", "poweredOn", "poweredOff"]),
         "os_name": ctx.pick(OS_CATALOG)[0],
@@ -181,6 +218,7 @@ def generate_network_device(ctx: GeneratorContext, ci_id: str) -> dict:
         "vendor": vendor,
         "model": model,
         "device_role": device_role,
+        "port_count": ctx.rng.choice([24, 48, 64, 96]),
         "management_ip": ctx.next_ip(),
         "software_version": software_version,
         "status": _status(ctx),
@@ -189,17 +227,41 @@ def generate_network_device(ctx: GeneratorContext, ci_id: str) -> dict:
 
 
 def generate_ip_address(ctx: GeneratorContext, ci_id: str) -> dict:
+    environment = _environment(ctx)
+    address = ctx.next_ip()
+    prefix_length = ctx.rng.choice([24, 24, 26, 28])
+    network = ipaddress.ip_network(f"{address}/{prefix_length}", strict=False)
+    gateway = network.network_address + 1
+    if gateway == ipaddress.ip_address(address):
+        gateway += 1
+    status = ctx.rng.choice(["assigned", "reserved", "free"])
     return {
-        "address": ctx.next_ip(),
-        "prefix_length": ctx.rng.choice([24, 24, 26, 28]),
-        "status": ctx.rng.choice(["assigned", "reserved", "free"]),
-        "environment": _environment(ctx),
+        "address": address,
+        "prefix_length": prefix_length,
+        "ip_version": 4,
+        "address_type": "private",
+        "allocation_type": (
+            "unallocated" if status == "free" else ctx.rng.choice(["static", "dhcp"])
+        ),
+        "dns_name": (
+            "unassigned" if status == "free" else ctx.hostname(ci_id, "ip", environment)
+        ),
+        "gateway": str(gateway),
+        "vlan_id": ctx.rng.randrange(10, 4000),
+        "status": status,
+        "environment": environment,
     }
 
 
 def generate_application(ctx: GeneratorContext, ci_id: str) -> dict:
     index = ci_id.split("-", 1)[-1]
     word = ctx.pick(APP_WORDS)
+    language, framework = ctx.pick(APP_STACKS)
+    version = (
+        f"{ctx.rng.randrange(1, 6)}."
+        f"{ctx.rng.randrange(0, 20)}."
+        f"{ctx.rng.randrange(0, 30)}"
+    )
     return {
         "code": f"APP{index}",
         "name": f"{word}-service",
@@ -207,17 +269,27 @@ def generate_application(ctx: GeneratorContext, ci_id: str) -> dict:
         "environment": _environment(ctx),
         "criticality": ctx.pick(CRITICALITIES),
         "lifecycle_status": ctx.rng.choice(["production", "production", "development", "retired"]),
+        "version": version,
+        "language": language,
+        "framework": framework,
+        "deployment_model": ctx.rng.choice(["kubernetes", "virtual_machine", "serverless"]),
+        "business_unit": ctx.pick(BUSINESS_UNITS),
     }
 
 
 def generate_database(ctx: GeneratorContext, ci_id: str) -> dict:
     environment = _environment(ctx)
-    engine, versions, port = ctx.pick(DATABASE_CATALOG)
+    engine, versions, port, charset = ctx.pick(DATABASE_CATALOG)
+    index = ci_id.rsplit("-", 1)[-1]
     return {
         "engine": engine,
         "version": ctx.pick(versions),
         "host": ctx.hostname(ci_id, "db", environment),
         "port": port,
+        "database_name": f"{engine.lower()}_{index}",
+        "charset": charset,
+        "storage_gib": ctx.rng.choice([50, 100, 250, 500, 1000, 2000]),
+        "high_availability": ctx.rng.choice(["enabled", "enabled", "disabled"]),
         "environment": environment,
         "status": _status(ctx),
     }
@@ -225,31 +297,52 @@ def generate_database(ctx: GeneratorContext, ci_id: str) -> dict:
 
 def generate_middleware(ctx: GeneratorContext, ci_id: str) -> dict:
     environment = _environment(ctx)
-    middleware_type, versions, port = ctx.pick(MIDDLEWARE_CATALOG)
+    middleware_type, versions, port, protocol = ctx.pick(MIDDLEWARE_CATALOG)
     return {
         "type": middleware_type,
         "version": ctx.pick(versions),
         "host": ctx.hostname(ci_id, "mw", environment),
         "port": port,
+        "instance_name": f"{middleware_type.lower()}-{ci_id.rsplit('-', 1)[-1]}",
+        "protocol": protocol,
+        "cluster_mode": ctx.rng.choice(["clustered", "clustered", "standalone"]),
+        "instance_count": ctx.rng.choice([1, 2, 3, 5]),
         "environment": environment,
         "status": _status(ctx),
     }
 
 
 def generate_kubernetes_cluster(ctx: GeneratorContext, ci_id: str) -> dict:
+    environment = _environment(ctx)
+    cluster_name = f"{ENV_SHORT[environment]}-cluster-{ci_id.rsplit('-', 1)[-1]}"
     return {
         "version": ctx.pick(K8S_VERSIONS),
-        "environment": _environment(ctx),
+        "environment": environment,
         "status": _status(ctx),
         "cni": ctx.rng.choice(["calico", "cilium", "flannel"]),
+        "cluster_name": cluster_name,
+        "api_endpoint": f"https://{ctx.next_ip()}:6443",
+        "pod_cidr": f"10.{ctx.rng.randrange(16, 32)}.0.0/16",
+        "service_cidr": "10.96.0.0/12",
+        "distribution": ctx.rng.choice(["kubeadm", "RKE2", "managed"]),
+        "container_runtime": ctx.rng.choice(["containerd", "CRI-O"]),
     }
 
 
 def generate_kubernetes_node(ctx: GeneratorContext, ci_id: str) -> dict:
+    environment = _environment(ctx)
     return {
         "role": ctx.rng.choice(["control-plane", "worker", "worker", "worker"]),
         "version": ctx.pick(K8S_VERSIONS),
         "status": ctx.rng.choice(["Ready", "Ready", "Ready", "NotReady"]),
+        "environment": environment,
+        "hostname": ctx.hostname(ci_id, "k8s", environment),
+        "internal_ip": ctx.next_ip(),
+        "cpu_cores": ctx.rng.choice([4, 8, 16, 32]),
+        "memory_gib": ctx.rng.choice([16, 32, 64, 128]),
+        "disk_gib": ctx.rng.choice([100, 200, 500, 1000]),
+        "container_runtime": ctx.rng.choice(["containerd", "CRI-O"]),
+        "os_name": ctx.pick(OS_CATALOG)[0],
     }
 
 
@@ -257,12 +350,24 @@ def generate_kubernetes_workload(ctx: GeneratorContext, ci_id: str) -> dict:
     index = ci_id.split("-", 1)[-1]
     word = ctx.pick(APP_WORDS)
     name = f"{word}-{index}"
+    replicas = ctx.rng.randrange(1, 6)
+    status = _status(ctx)
+    image = (
+        f"registry.example.local/{word}:"
+        f"{ctx.rng.randrange(1, 4)}.{ctx.rng.randrange(0, 20)}.{ctx.rng.randrange(0, 20)}"
+    )
     return {
         "kind": ctx.pick(WORKLOAD_KINDS),
         "namespace": ctx.pick(NAMESPACES),
-        "replicas": ctx.rng.randrange(1, 6),
-        "image": f"registry.example.local/{word}:{ctx.rng.randrange(1, 4)}.{ctx.rng.randrange(0, 20)}.{ctx.rng.randrange(0, 20)}",
-        "status": _status(ctx),
+        "replicas": replicas,
+        "image": image,
+        "status": status,
+        "workload_name": name,
+        "uid": ctx.deterministic_uuid(ci_id),
+        "available_replicas": replicas if status == "active" else max(0, replicas - 1),
+        "restart_policy": ctx.rng.choice(["Always", "Always", "OnFailure"]),
+        "service_account": ctx.rng.choice(["default", "app-runtime", "read-only"]),
+        "environment": _environment(ctx),
     }
 
 
