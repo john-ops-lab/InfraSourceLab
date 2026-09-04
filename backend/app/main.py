@@ -63,7 +63,7 @@ def create_app(settings: Settings | None = None, ai_provider=None) -> FastAPI:
     app = FastAPI(
         title="InfraSourceLab",
         description="CMDB 测试数据生成工具：规格 → 数据集 → 带认证的 REST API 与导出。",
-        version="0.1.0",
+        version="0.1.1",
     )
     app.state.settings = settings
 
