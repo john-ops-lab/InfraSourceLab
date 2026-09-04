@@ -6,7 +6,7 @@
 
 当前代码与验证基线：
 
-- 后端：119 个 pytest；
+- 后端：121 个 pytest；
 - 前端：27 个 Vitest；
 - 端到端：15 个 Playwright；
 - GitHub Actions：PR 与 `main` 推送均运行后端、前端和端到端三组检查；
@@ -18,7 +18,7 @@
 LICENSE
 README.md
 docs/
-backend/              FastAPI + SQLAlchemy + SQLite + Faker 数据生成引擎与 119 个 pytest
+backend/              FastAPI + SQLAlchemy + SQLite + Faker 数据生成引擎与 121 个 pytest
 web/                  React 19 + TypeScript + Vite + Tailwind v4 + shadcn/ui 前端
 Dockerfile            单镜像：后端 + 内置前端静态产物
 docker-compose.yml    只向 127.0.0.1:8080 发布
@@ -46,7 +46,7 @@ Issue #1 的 MVP 闭环已可运行：
 - CSV ZIP 额外包含 `spec.json` 和 `quality_report.csv`，JSON/XLSX 同步包含质量报告；
 - SQLite v2 为 `datasets` 增加 `quality_report_json`；v1 自动执行幂等的加列迁移，旧数据保留并使用空报告。
 
-当前验证基线：后端 119 passed；Vitest 27 passed；Playwright Chromium 15 passed。GitHub PR/CI 与合并状态以对应 PR 为准，不能由本地结果代替。
+当前验证基线：后端 121 passed；Vitest 27 passed；Playwright Chromium 15 passed。GitHub PR/CI 与合并状态以对应 PR 为准，不能由本地结果代替。
 
 ### 2026-09-04：拓扑节点详情布局修复
 
@@ -54,6 +54,14 @@ Issue #1 的 MVP 闭环已可运行：
 - 基础信息、全部属性、全部标签分别显示项目总数，并逐项完整渲染接口返回值，不截断长文本或结构化值；
 - 标题与“聚焦邻居”操作固定，正文使用常驻纵向滚动条，内容过高时只滚动面板内部；
 - 新增 Playwright 用例，核对基础字段数量、每个属性值、标签数量、面板宽度与真实滚动溢出。
+
+### 2026-09-04：内置 CI 默认属性扩充
+
+- 12 种内置 CI 的清洁生成结果默认包含 10～12 个业务属性，顶层 `id`、`type`、`name` 和 `tags` 不计入数量；
+- 新字段围绕机房容量、机柜供电、应用技术栈、数据库容量、中间件协议、IP 分配和 Kubernetes 运行配置生成，不使用空占位字段凑数；
+- `CI_ATTRIBUTE_KINDS` 作为字段合同，生成引擎写入前强制检查至少 10 个属性；默认 AI 系统提示词同步声明该保证，并禁止生成规格虚构 `fields` / `attributes` 配置；
+- 生成器版本升至 `1.3.0`：已有数据集原样保留，新创建的数据集使用扩充后的字段；显式 `missing_field` 缺陷仍可按设计减少目标记录的属性数；
+- 新增后端测试，逐类核对最小属性数、字段合同、生成器版本和默认提示词约束。
 
 ### 后续特性：管理员登录与 AI 配置页（已实现）
 

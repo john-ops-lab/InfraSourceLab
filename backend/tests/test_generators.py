@@ -1,9 +1,12 @@
 """确定性生成器测试：覆盖方向、去重、自环、引用完整性、万级冒烟。"""
 
+import ipaddress
+
 import pytest
 
 from app.generators.engine import generate_dataset
-from app.specs.models import parse_and_validate
+from app.specs.ci_fields import CI_ATTRIBUTE_KINDS
+from app.specs.models import BUILTIN_CI_TYPES, parse_and_validate
 
 
 def make_spec(ci_types, relations, seed=7) -> dict:
@@ -48,20 +51,78 @@ def test_different_seed_changes_data():
     assert [ci.attributes for ci in first.cis] != [ci.attributes for ci in second.cis]
 
 
+def test_every_builtin_ci_type_has_at_least_ten_default_attributes():
+    raw = make_spec(
+        ci_types=[{"type": ci_type, "count": 1} for ci_type in BUILTIN_CI_TYPES],
+        relations=[],
+        seed=20260904,
+    )
+    result = generate_dataset(parse_and_validate(raw))
+    generated_by_type = {ci.type: ci for ci in result.cis}
+    repeated = generate_dataset(parse_and_validate(raw))
+
+    assert set(generated_by_type) == set(BUILTIN_CI_TYPES)
+    assert [ci.attributes for ci in result.cis] == [ci.attributes for ci in repeated.cis]
+    for ci_type in BUILTIN_CI_TYPES:
+        attributes = generated_by_type[ci_type].attributes
+        assert len(attributes) >= 10, (
+            f"{ci_type} 只有 {len(attributes)} 个默认业务属性"
+        )
+        assert set(attributes) == set(CI_ATTRIBUTE_KINDS[ci_type])
+        for field, kind in CI_ATTRIBUTE_KINDS[ci_type].items():
+            expected_type = int if kind == "integer" else str
+            assert isinstance(attributes[field], expected_type), f"{ci_type}.{field} 类型错误"
+
+    assert result.generator_version == "1.3.0"
+
+    ip_only = generate_dataset(
+        parse_and_validate(
+            make_spec(ci_types=[{"type": "ip_address", "count": 1}], relations=[], seed=0)
+        )
+    ).cis[0]
+    network = ipaddress.ip_network(
+        f"{ip_only.attributes['address']}/{ip_only.attributes['prefix_length']}",
+        strict=False,
+    )
+    assert ipaddress.ip_address(ip_only.attributes["gateway"]) in network
+    assert ip_only.attributes["gateway"] != ip_only.attributes["address"]
+
+
 def test_generated_catalog_fields_stay_coherent():
-    """品牌、型号、环境和默认端口必须来自同一条目录记录，不能各自乱抽。"""
+    """关联字段必须来自同一条目录记录，容量和运行状态也要自洽。"""
     raw = make_spec(
         ci_types=[
+            {"type": "data_center", "count": 120},
+            {"type": "rack", "count": 120},
             {"type": "physical_server", "count": 120},
             {"type": "network_device", "count": 120},
+            {"type": "application", "count": 120},
             {"type": "database", "count": 120},
             {"type": "middleware", "count": 120},
+            {"type": "kubernetes_workload", "count": 120},
         ],
         relations=[],
         seed=20260825,
     )
     result = generate_dataset(parse_and_validate(raw))
 
+    data_centers = {
+        "北京亦庄数据中心": ("中国", "CN-BJS-01", "cn-north", "Asia/Shanghai"),
+        "上海临港数据中心": ("中国", "CN-SHA-01", "cn-east", "Asia/Shanghai"),
+        "深圳光明数据中心": ("中国", "CN-SZX-01", "cn-south", "Asia/Shanghai"),
+        "Singapore Central Data Center": (
+            "Singapore",
+            "SG-SIN-01",
+            "ap-southeast",
+            "Asia/Singapore",
+        ),
+        "Frankfurt West Data Center": (
+            "Germany",
+            "DE-FRA-01",
+            "eu-central",
+            "Europe/Berlin",
+        ),
+    }
     server_models = {
         "Dell": {"PowerEdge R750"},
         "HPE": {"ProLiant DL380 Gen11"},
@@ -80,20 +141,27 @@ def test_generated_catalog_fields_stay_coherent():
         ("Fortinet", "FortiGate 200F", "firewall"),
         ("F5", "BIG-IP i5800", "load-balancer"),
     }
-    database_ports = {
-        "PostgreSQL": 5432,
-        "MySQL": 3306,
-        "Oracle": 1521,
-        "SQLServer": 1433,
-        "MongoDB": 27017,
+    app_stacks = {
+        ("Java", "Spring Boot"),
+        ("Python", "FastAPI"),
+        ("Go", "Gin"),
+        ("Node.js", "NestJS"),
+        (".NET", "ASP.NET Core"),
     }
-    middleware_ports = {
-        "Nginx": 80,
-        "Kafka": 9092,
-        "RabbitMQ": 5672,
-        "Tomcat": 8080,
-        "Elasticsearch": 9200,
-        "ZooKeeper": 2181,
+    database_catalog = {
+        "PostgreSQL": (5432, "UTF8"),
+        "MySQL": (3306, "utf8mb4"),
+        "Oracle": (1521, "AL32UTF8"),
+        "SQLServer": (1433, "UTF8"),
+        "MongoDB": (27017, "UTF8"),
+    }
+    middleware_catalog = {
+        "Nginx": (80, "http"),
+        "Kafka": (9092, "tcp"),
+        "RabbitMQ": (5672, "amqp"),
+        "Tomcat": (8080, "http"),
+        "Elasticsearch": (9200, "http"),
+        "ZooKeeper": (2181, "tcp"),
     }
     env_prefixes = {
         "production": "prod-",
@@ -104,18 +172,31 @@ def test_generated_catalog_fields_stay_coherent():
 
     for ci in result.cis:
         attrs = ci.attributes
-        if ci.type == "physical_server":
+        if ci.type == "data_center":
+            assert (
+                attrs["country"],
+                attrs["site_code"],
+                attrs["region"],
+                attrs["timezone"],
+            ) == data_centers[attrs["location"]]
+        elif ci.type == "rack":
+            assert 0 < attrs["current_power_kw"] < attrs["power_capacity_kw"]
+        elif ci.type == "physical_server":
             assert attrs["model"] in server_models[attrs["vendor"]]
             assert attrs["hostname"].startswith(env_prefixes[attrs["environment"]])
         elif ci.type == "network_device":
             assert (attrs["vendor"], attrs["model"], attrs["device_role"]) in network_catalog
             assert attrs["hostname"].startswith(env_prefixes[attrs["environment"]])
+        elif ci.type == "application":
+            assert (attrs["language"], attrs["framework"]) in app_stacks
         elif ci.type == "database":
-            assert attrs["port"] == database_ports[attrs["engine"]]
+            assert (attrs["port"], attrs["charset"]) == database_catalog[attrs["engine"]]
             assert attrs["host"].startswith(env_prefixes[attrs["environment"]])
         elif ci.type == "middleware":
-            assert attrs["port"] == middleware_ports[attrs["type"]]
+            assert (attrs["port"], attrs["protocol"]) == middleware_catalog[attrs["type"]]
             assert attrs["host"].startswith(env_prefixes[attrs["environment"]])
+        elif ci.type == "kubernetes_workload":
+            assert 0 <= attrs["available_replicas"] <= attrs["replicas"]
 
 
 def test_coverage_from_gives_every_source_one_edge():

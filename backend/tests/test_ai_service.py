@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.ai.provider import AIProviderError, _extract_json
+from app.ai.provider import AIProviderError, _extract_json, build_default_system_prompt
 from app.auth.token import DEFAULT_API_KEY
 from conftest import TEST_KEY
 
@@ -40,6 +40,14 @@ def test_status_exposes_default_api_key(client):
 
 
 # ---------- 提示词配置 ----------
+
+
+def test_default_system_prompt_explains_attribute_guarantee():
+    prompt = build_default_system_prompt()
+
+    assert "至少 10 个业务属性" in prompt
+    assert "不含顶层 id、name、type 和 tags" in prompt
+    assert "不要自行添加 fields 或 attributes" in prompt
 
 
 def test_prompt_config_roundtrip(client):

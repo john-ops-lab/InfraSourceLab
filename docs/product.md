@@ -163,15 +163,16 @@ kubernetes_node
 kubernetes_workload
 ```
 
-每种类型只提供开发测试真正需要的字段，例如：
+每种类型默认提供至少 10 个开发测试需要的业务属性，不用空占位字段凑数；
+这里的数量不包含顶层 `id`、`type`、`name` 和 `tags`。例如：
 
-- 通用：`name`、`status`、`environment`、`owner`、`tags`；
+- 顶层：`id`、`type`、`name`、`tags`；常用业务属性包括 `status`、`environment`、`owner`；
 - 服务器：`hostname`、`serial_number`、`vendor`、`model`、`cpu`、`memory`、`management_ip`；
-- 虚拟机：`uuid`、`hostname`、`cpu`、`memory`、`ip_address`、`power_state`；
-- 网络设备：`hostname`、`serial_number`、`vendor`、`model`、`management_ip`；
-- 应用：`code`、`name`、`owner`、`environment`、`criticality`；
-- 数据库和中间件：`engine/type`、`version`、`host`、`port`、`environment`；
-- Kubernetes：集群、节点、工作负载的基础配置字段。
+- 虚拟机：`uuid`、`hostname`、`cpu`、`memory`、`disk_gib`、`ip_address`、`power_state`；
+- 网络设备：`hostname`、`serial_number`、`vendor`、`model`、`port_count`、`management_ip`；
+- 应用：`code`、`owner`、`environment`、`criticality`、`version`、`language`、`framework`；
+- 数据库和中间件：引擎或类型、版本、主机、端口、容量、协议和集群模式；
+- Kubernetes：集群网络、节点资源和工作负载运行状态等基础配置字段。
 
 不追求复制任何厂商完整 API。
 
