@@ -42,7 +42,7 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - run: npm ci
+      - run: npm ci --no-audit --no-fund
       - run: npm test
       - run: npm run build
 
@@ -64,7 +64,7 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - run: uv sync --frozen --dev
         working-directory: backend
-      - run: npm ci
+      - run: npm ci --no-audit --no-fund
         working-directory: web
       - run: npx playwright install --with-deps chromium
         working-directory: web
