@@ -18,6 +18,8 @@ import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
 import {
   Select,
@@ -295,8 +297,56 @@ const TYPE_COLORS = [
 
 function formatValue(value: unknown): string {
   if (value === null || value === undefined) return "-"
-  if (typeof value === "object") return JSON.stringify(value)
+  if (typeof value === "object") return JSON.stringify(value, null, 2)
   return String(value)
+}
+
+type DetailKind = "basic" | "attribute" | "tag"
+
+interface DetailEntry {
+  key: string
+  label: string
+  value: unknown
+}
+
+interface DetailSectionProps {
+  kind: DetailKind
+  title: string
+  entries: DetailEntry[]
+  emptyText: string
+}
+
+function DetailSection({ kind, title, entries, emptyText }: DetailSectionProps) {
+  const headingId = `ci-detail-${kind}-heading`
+  return (
+    <section className="flex flex-col gap-3" aria-labelledby={headingId}>
+      <div className="flex items-center justify-between gap-3">
+        <h3 id={headingId} className="text-sm font-semibold">
+          {title}（{entries.length}）
+        </h3>
+        <Badge variant="outline">{entries.length} 项</Badge>
+      </div>
+      {entries.length > 0 ? (
+        <dl className="flex flex-col gap-2">
+          {entries.map((entry) => (
+            <div
+              key={entry.key}
+              data-detail-kind={kind}
+              data-detail-key={entry.key}
+              className="grid gap-1 rounded-md border bg-muted/30 px-3 py-2.5 sm:grid-cols-[minmax(7rem,0.8fr)_minmax(0,1.6fr)] sm:gap-4"
+            >
+              <dt className="text-xs font-medium text-muted-foreground">{entry.label}</dt>
+              <dd className="min-w-0 whitespace-pre-wrap break-words font-mono text-xs leading-relaxed sm:text-right">
+                {formatValue(entry.value)}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      ) : (
+        <p className="text-sm text-muted-foreground">{emptyText}</p>
+      )}
+    </section>
+  )
 }
 
 type ExpandableNodeData = {
@@ -755,16 +805,20 @@ export function TopologyView({ datasetId, ciTypes, relationTypes }: TopologyView
       </div>
 
       <Sheet open={selectedCi !== null} onOpenChange={(open) => !open && setSelectedCi(null)}>
-        <SheetContent>
-          <SheetHeader>
-            <SheetTitle>{selectedCi?.name}</SheetTitle>
+        <SheetContent className="gap-0 overflow-hidden data-[side=right]:w-[calc(100%-1rem)] data-[side=right]:sm:max-w-xl">
+          <SheetHeader className="shrink-0 gap-3 pr-14">
+            <div className="flex flex-wrap items-center gap-2">
+              <SheetTitle className="break-words text-lg">{selectedCi?.name ?? "CI 详情"}</SheetTitle>
+              {selectedCi && <Badge variant="secondary">{ciTypeLabel(selectedCi.type)}</Badge>}
+            </div>
             <SheetDescription>
-              {selectedCi ? `${selectedCi.id} · ${ciTypeLabel(selectedCi.type)}` : ""}
+              {selectedCi
+                ? `${selectedCi.id} · 完整展示接口返回的基础信息、全部属性和全部标签。`
+                : "查看 CI 的完整信息。"}
             </SheetDescription>
-          </SheetHeader>
-          {selectedCi && (
-            <div className="mt-4 space-y-4 overflow-y-auto">
+            {selectedCi && (
               <Button
+                className="w-fit"
                 variant="outline"
                 size="sm"
                 onClick={() => {
@@ -772,39 +826,51 @@ export function TopologyView({ datasetId, ciTypes, relationTypes }: TopologyView
                   setSelectedCi(null)
                 }}
               >
-                <Crosshair className="size-4" aria-hidden />
+                <Crosshair data-icon="inline-start" aria-hidden />
                 聚焦邻居
               </Button>
-              <div>
-                <h3 className="mb-2 text-sm font-semibold">属性</h3>
-                <div className="space-y-1.5">
-                  {Object.entries(selectedCi.attributes).map(([key, value]) => (
-                    <div key={key} className="flex justify-between gap-3 text-sm">
-                      <span className="text-muted-foreground">{key}</span>
-                      <span className="text-right font-mono text-xs break-all">
-                        {formatValue(value)}
-                      </span>
-                    </div>
-                  ))}
-                  {Object.keys(selectedCi.attributes).length === 0 && (
-                    <p className="text-sm text-muted-foreground">无属性。</p>
-                  )}
-                </div>
+            )}
+          </SheetHeader>
+          <Separator />
+          {selectedCi && (
+            <ScrollArea type="always" className="min-h-0 flex-1">
+              <div className="flex flex-col gap-6 p-4 pr-6">
+                <DetailSection
+                  kind="basic"
+                  title="基础信息"
+                  emptyText="无基础信息。"
+                  entries={[
+                    { key: "id", label: "CI ID", value: selectedCi.id },
+                    { key: "name", label: "名称", value: selectedCi.name },
+                    {
+                      key: "type",
+                      label: "类型",
+                      value: `${ciTypeLabel(selectedCi.type)} (${selectedCi.type})`,
+                    },
+                  ]}
+                />
+                <DetailSection
+                  kind="attribute"
+                  title="全部属性"
+                  emptyText="无属性。"
+                  entries={Object.entries(selectedCi.attributes).map(([key, value]) => ({
+                    key,
+                    label: key,
+                    value,
+                  }))}
+                />
+                <DetailSection
+                  kind="tag"
+                  title="全部标签"
+                  emptyText="无标签。"
+                  entries={Object.entries(selectedCi.tags).map(([key, value]) => ({
+                    key,
+                    label: key,
+                    value,
+                  }))}
+                />
               </div>
-              <div>
-                <h3 className="mb-2 text-sm font-semibold">标签</h3>
-                <div className="flex flex-wrap gap-1.5">
-                  {Object.entries(selectedCi.tags).map(([key, value]) => (
-                    <Badge key={key} variant="secondary">
-                      {key}={value}
-                    </Badge>
-                  ))}
-                  {Object.keys(selectedCi.tags).length === 0 && (
-                    <p className="text-sm text-muted-foreground">无标签。</p>
-                  )}
-                </div>
-              </div>
-            </div>
+            </ScrollArea>
           )}
         </SheetContent>
       </Sheet>
