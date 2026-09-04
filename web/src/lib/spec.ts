@@ -123,6 +123,94 @@ export const CI_TYPE_LABELS: Record<string, string> = {
   kubernetes_workload: "Kubernetes 工作负载",
 }
 
+// UI 属性名对照：序列化、接口和导出仍使用原始英文键名。
+// 未登记的自定义字段原样显示，避免前端猜测或改写用户数据。
+export const CI_FIELD_LABELS: Record<string, string> = {
+  id: "CI ID",
+  name: "名称",
+  type: "类型",
+  location: "机房位置",
+  country: "国家/地区",
+  site_code: "站点编码",
+  region: "区域",
+  timezone: "时区",
+  tier: "机房等级",
+  floor_area_sqm: "建筑面积",
+  power_capacity_kw: "供电容量",
+  cooling_type: "制冷方式",
+  status: "状态",
+  environment: "环境",
+  owner: "负责人",
+  asset_tag: "资产标签",
+  room: "机房",
+  row: "机柜列",
+  u_height: "U 位高度",
+  current_power_kw: "当前功率",
+  cooling_zone: "制冷区域",
+  temperature_c: "温度",
+  hostname: "主机名",
+  serial_number: "序列号",
+  vendor: "厂商",
+  model: "型号",
+  cpu_cores: "CPU 核数",
+  memory_gib: "内存容量",
+  management_ip: "管理 IP",
+  os_name: "操作系统",
+  os_version: "操作系统版本",
+  uuid: "UUID",
+  disk_gib: "磁盘容量",
+  ip_address: "IP 地址",
+  power_state: "电源状态",
+  device_role: "设备角色",
+  port_count: "端口数量",
+  software_version: "软件版本",
+  address: "IP 地址",
+  prefix_length: "前缀长度",
+  ip_version: "IP 版本",
+  address_type: "地址类型",
+  allocation_type: "分配方式",
+  dns_name: "DNS 名称",
+  gateway: "网关",
+  vlan_id: "VLAN ID",
+  code: "应用编码",
+  criticality: "重要等级",
+  lifecycle_status: "生命周期状态",
+  version: "版本",
+  language: "开发语言",
+  framework: "开发框架",
+  deployment_model: "部署方式",
+  business_unit: "业务部门",
+  engine: "数据库引擎",
+  host: "主机地址",
+  port: "端口",
+  database_name: "数据库名称",
+  charset: "字符集",
+  storage_gib: "存储容量",
+  high_availability: "高可用",
+  instance_name: "实例名称",
+  protocol: "协议",
+  cluster_mode: "集群模式",
+  instance_count: "实例数量",
+  cni: "容器网络插件",
+  cluster_name: "集群名称",
+  api_endpoint: "API 地址",
+  pod_cidr: "Pod 网段",
+  service_cidr: "Service 网段",
+  distribution: "发行版",
+  container_runtime: "容器运行时",
+  role: "节点角色",
+  internal_ip: "内部 IP",
+  kind: "工作负载类型",
+  namespace: "命名空间",
+  replicas: "期望副本数",
+  image: "容器镜像",
+  workload_name: "工作负载名称",
+  uid: "唯一标识",
+  available_replicas: "可用副本数",
+  restart_policy: "重启策略",
+  service_account: "服务账户",
+}
+
 // 关系类型中文对照（回退默认，口径与后端 DEFAULT_RELATION_TYPES 一致，
 // 覆盖业界 CMDB 常见关系：包含于/安装/运行/托管/部署/归属/依赖/使用/连接/管理/服务提供与消费/备份）。
 // 层级关系统一「子→父」方向（如 rack contained_in data_center），运行时由设置页维护的注册表覆盖。
@@ -186,6 +274,11 @@ export const DEFECT_KIND_LABELS: Record<DefectKind, string> = {
 
 export function ciTypeLabel(type: string): string {
   return CI_TYPE_LABELS[type] ?? type
+}
+
+export function ciFieldLabel(field: string): string {
+  const label = CI_FIELD_LABELS[field]
+  return label ? `${label}（${field}）` : field
 }
 
 export function formatRelation(
