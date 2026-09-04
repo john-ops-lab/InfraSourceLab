@@ -8,12 +8,12 @@
 
 自然语言驱动、确定性、可复现的 CMDB 测试数据生成器。
 
-[![Version](https://img.shields.io/badge/version-v0.1.0-2ea44f?style=flat-square)](https://github.com/john-ops-lab/InfraSourceLab/releases)
+[![Version](https://img.shields.io/badge/version-v0.1.1-2ea44f?style=flat-square)](https://github.com/john-ops-lab/InfraSourceLab/releases)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](LICENSE)
 [![Backend](https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square)](backend/)
 [![Frontend](https://img.shields.io/badge/frontend-React%2019-61dafb?style=flat-square)](web/)
 [![CI](https://github.com/john-ops-lab/InfraSourceLab/actions/workflows/ci.yml/badge.svg)](https://github.com/john-ops-lab/InfraSourceLab/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-121%20backend%20%7C%2027%20unit%20%7C%2015%20e2e-brightgreen?style=flat-square)](docs/status.md)
+[![Tests](https://img.shields.io/badge/tests-121%20backend%20%7C%2029%20unit%20%7C%2015%20e2e-brightgreen?style=flat-square)](docs/status.md)
 [![Docker](https://img.shields.io/badge/docker-single%20image-2496ed?style=flat-square)](Dockerfile)
 
 [30 秒理解](#-30-秒理解) · [快速开始](#-快速开始) · [REST API](#-rest-api) · [项目文档](#-项目文档)
