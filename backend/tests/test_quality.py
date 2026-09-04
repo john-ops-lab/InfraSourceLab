@@ -92,6 +92,9 @@ def test_duplicate_record_adds_business_duplicates():
     # 新增的重复记录不继承关系
     added_ids = {ci.id for ci in servers} - clean_ids
     assert len(added_ids) == 2
+    for ci in servers:
+        if ci.id in added_ids:
+            assert ci.id in ci.search_text
     for rel in result.relations:
         assert rel.from_id not in added_ids and rel.to_id not in added_ids
 

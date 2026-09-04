@@ -1,8 +1,8 @@
 # InfraSourceLab 产品定义
 
-> **状态：设计阶段，尚未开始产品代码开发。**
+> **状态：现役产品定义。**
 >
-> 本文描述目标产品，不代表功能已经实现。实际状态以 [`status.md`](status.md) 和 GitHub `main` 中真实存在的文件为准。
+> 本文描述当前产品边界。具体实现与验证状态以 [`status.md`](status.md) 和 GitHub `main` 中真实存在的文件为准。
 
 ## 1. 第一性原理
 
@@ -10,7 +10,7 @@
 
 > 在没有真实测试环境时，快速得到一批数量可控、字段合理、关系一致的 CMDB 配置数据，并让 CMDB、数据导入程序或测试脚本通过一个带认证的接口读取。
 
-因此首版只计划完成四件事：
+当前产品围绕四件事展开：
 
 1. 把自然语言转换成结构化生成规格；
 2. 根据规格稳定生成 CI 与关系；
@@ -203,7 +203,7 @@ coverage = from | to
 
 ## 7. MVP 成功判据
 
-Issue #1 实现完成后，用户应当能够：
+当前版本让用户能够：
 
 1. 通过一条自然语言获得有效规格；
 2. 在无 AI 时从模板生成；
@@ -214,7 +214,7 @@ Issue #1 实现完成后，用户应当能够：
 7. 下载 JSON、CSV，以及实现成本可控时的 XLSX；
 8. 把 API 地址直接交给 CMDB、数据导入程序或测试脚本使用。
 
-这些目前都是验收目标，尚未完成。
+这些能力已实现；当前验证基线见 [`status.md`](status.md)。
 
 ## 8. 明确不做
 
@@ -251,6 +251,6 @@ MVP 不建设：
 
 ## 10. 当前路线
 
-- [Issue #1](https://github.com/john-ops-lab/InfraSourceLab/issues/1)：MVP 设计已整理，**尚未开始开发**；
-- [Issue #2](https://github.com/john-ops-lab/InfraSourceLab/issues/2)：仅包含简单拓扑、基础数据质量和 CMDB 使用示例，**必须等待 #1 真正实现和验证后再决定是否开发**；
+- [Issue #1](https://github.com/john-ops-lab/InfraSourceLab/issues/1)：MVP 已完成并发布；
+- [Issue #2](https://github.com/john-ops-lab/InfraSourceLab/issues/2)：简单拓扑、基础数据质量和 CMDB 使用示例已完成；
 - Issues #3～#8：已关闭为“不计划实施”。

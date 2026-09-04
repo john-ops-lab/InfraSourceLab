@@ -133,5 +133,11 @@ def delete_relation_type(type_name: str, session: OrmSession = Depends(get_sessi
             detail=f"关系类型 {type_name} 正被 {referenced} 个数据集规格引用，不能删除。可先删除相关数据集。",
         )
 
+    if row.is_builtin:
+        raise HTTPException(
+            status_code=409,
+            detail=f"内置关系类型 {type_name} 不能删除，以免内置模板失效；可以修改名称和方向。",
+        )
+
     session.delete(row)
     session.commit()

@@ -29,7 +29,7 @@ ID_PREFIXES = {
 }
 
 # search_text 白名单字段（来自 attributes，另含顶层 ci_id 和 name）
-SEARCH_FIELDS = ["hostname", "ip_address", "management_ip", "serial_number", "code"]
+SEARCH_FIELDS = ["hostname", "ip_address", "address", "management_ip", "serial_number", "code"]
 
 
 @dataclass

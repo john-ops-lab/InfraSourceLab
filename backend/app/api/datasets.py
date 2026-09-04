@@ -67,6 +67,37 @@ def _get_dataset_or_404(session: Session, dataset_id: int) -> Dataset:
         raise HTTPException(status_code=404, detail=f"数据集不存在：{dataset_id}") from exc
 
 
+def _select_topology_node_ids(filtered_ids: list[str], relation_rows: list, limit: int) -> list[str]:
+    """确定性抽样：优先保留完整关系端点，再按稳定 ID 顺序补足节点。"""
+    if len(filtered_ids) <= limit:
+        return filtered_ids
+
+    eligible = set(filtered_ids)
+    selected: list[str] = []
+    selected_set: set[str] = set()
+
+    for row in relation_rows:
+        from_id, to_id = row[2], row[3]
+        if from_id not in eligible or to_id not in eligible:
+            continue
+        missing = [node_id for node_id in (from_id, to_id) if node_id not in selected_set]
+        if len(selected) + len(missing) > limit:
+            continue
+        for node_id in missing:
+            selected.append(node_id)
+            selected_set.add(node_id)
+        if len(selected) == limit:
+            return selected
+
+    for node_id in filtered_ids:
+        if node_id in selected_set:
+            continue
+        selected.append(node_id)
+        if len(selected) == limit:
+            break
+    return selected
+
+
 @router.post("", status_code=201)
 def create_dataset(body: DatasetCreateRequest, session: Session = Depends(get_session)) -> dict:
     try:
@@ -218,7 +249,7 @@ def get_topology(
 ) -> dict:
     """简单拓扑：节点来自 ci_records、边来自 ci_relations（Issue #2）。
 
-    有界返回：默认最多 200 个节点，超出时按 ci_id 稳定顺序截取并标记 truncated；
+    有界返回：默认最多 200 个节点，超出时优先保留关系端点并标记 truncated；
     传 center 时返回该节点及其邻居（聚焦邻居）。
     """
     _get_dataset_or_404(session, dataset_id)
@@ -235,21 +266,23 @@ def get_topology(
     ).all()
     by_id = {row[0]: (row[1], row[2]) for row in rows}
 
+    relation_stmt = (
+        select(CIRelation.relation_id, CIRelation.type, CIRelation.from_ci_id, CIRelation.to_ci_id)
+        .where(CIRelation.dataset_id == dataset_id)
+        .order_by(CIRelation.relation_id)
+    )
+    if relation_type is not None:
+        relation_stmt = relation_stmt.where(CIRelation.type == relation_type)
+    rel_rows = session.execute(relation_stmt).all()
+
     if center is not None:
         if center not in by_id:
             raise HTTPException(status_code=404, detail=f"CI 不存在：{center}")
         neighbor_ids: set[str] = set()
-        rel_rows = session.execute(
-            select(CIRelation.relation_id, CIRelation.type, CIRelation.from_ci_id, CIRelation.to_ci_id)
-            .where(
-                CIRelation.dataset_id == dataset_id,
-                (CIRelation.from_ci_id == center) | (CIRelation.to_ci_id == center),
-            )
-            .order_by(CIRelation.relation_id)
-        ).all()
         for row in rel_rows:
-            neighbor_ids.add(row[2])
-            neighbor_ids.add(row[3])
+            if row[2] == center or row[3] == center:
+                neighbor_ids.add(row[2])
+                neighbor_ids.add(row[3])
         neighbor_ids.discard(center)
         node_ids = [center] + sorted(neighbor_ids)[: limit - 1]
         truncated = len(neighbor_ids) + 1 > limit
@@ -262,7 +295,7 @@ def get_topology(
         ]
         total_nodes = len(filtered)
         truncated = total_nodes > limit
-        node_ids = filtered[:limit]
+        node_ids = _select_topology_node_ids(filtered, rel_rows, limit)
 
     node_set = set(node_ids)
     nodes = [
@@ -271,17 +304,10 @@ def get_topology(
         if ci_id in by_id
     ]
 
-    rel_rows = session.execute(
-        select(CIRelation.relation_id, CIRelation.type, CIRelation.from_ci_id, CIRelation.to_ci_id)
-        .where(CIRelation.dataset_id == dataset_id)
-        .order_by(CIRelation.relation_id)
-    ).all()
     edges = [
         {"id": row[0], "type": row[1], "from_id": row[2], "to_id": row[3]}
         for row in rel_rows
-        if (relation_type is None or row[1] == relation_type)
-        and row[2] in node_set
-        and row[3] in node_set
+        if row[2] in node_set and row[3] in node_set
     ]
 
     return {

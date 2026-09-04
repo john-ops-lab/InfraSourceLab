@@ -116,6 +116,15 @@ def test_delete_referenced_relation_type_rejected(client, auth):
     assert "引用" in blocked.json()["detail"]
 
 
+def test_delete_unreferenced_builtin_relation_type_rejected(client):
+    admin = _admin_headers(client)
+
+    blocked = client.delete("/api/v1/admin/relation-types/contained_in", headers=admin)
+
+    assert blocked.status_code == 409
+    assert "内置关系类型" in blocked.json()["detail"]
+
+
 def test_custom_relation_type_accepted_in_spec(client, auth):
     admin = _admin_headers(client)
     client.post(

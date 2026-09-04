@@ -16,7 +16,8 @@
 [![Backend](https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square)](backend/)
 [![Frontend](https://img.shields.io/badge/frontend-React%2019-61dafb?style=flat-square)](web/)
 [![Database](https://img.shields.io/badge/database-SQLite-003b57?style=flat-square)](backend/)
-[![Tests](https://img.shields.io/badge/tests-103%20backend%20%7C%2024%20unit%20%7C%2012%20e2e-brightgreen?style=flat-square)](docs/status.md)
+[![CI](https://github.com/john-ops-lab/InfraSourceLab/actions/workflows/ci.yml/badge.svg)](https://github.com/john-ops-lab/InfraSourceLab/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/tests-106%20backend%20%7C%2024%20unit%20%7C%2012%20e2e-brightgreen?style=flat-square)](docs/status.md)
 [![Docker](https://img.shields.io/badge/docker-single%20image-2496ed?style=flat-square)](Dockerfile)
 
 </div>
@@ -32,11 +33,11 @@
 - **🔁 确定性生成**：`GenerationSpec + seed + 生成器版本` 产生完全相同的结果，测试可复现；
 - **🗃️ 12 种内置 CI 类型**：数据中心、机柜、物理/虚拟机、网络设备、IP、应用、数据库、中间件、Kubernetes 集群/节点/工作负载；
 - **🔗 15 种内置关系类型**：`contained_in`、`mounted_in`、`runs_on`、`hosted_on`、`deployed_on`、`belongs_to`、`depends_on`、`uses`、`has_ip`、`connected_to` 等，关系覆盖方向明确（`coverage=from/to`）、无重复边、无悬空引用；
-- **🛠️ 关系类型注册表**：设置页直接增删改关系类型的中英文名称与方向，规格校验、AI 提示词、拓扑分层、界面对照即时生效。
+- **🛠️ 关系类型注册表**：设置页可编辑内置关系类型，也可增删改自定义关系类型；规格校验、AI 提示词、拓扑分层、界面对照即时生效。为保护内置模板，内置关系类型不可删除。
 
 ### 数据消费
 
-- **🕸️ 钻取式拓扑视图**：默认从顶层折叠、点击节点逐层展开，支持中英文标签三态切换（`runs_on(运行于)`）、全屏与聚焦邻居；
+- **🕸️ 钻取式拓扑视图**：默认从顶层折叠、点击节点逐层展开，大数据集采用关系感知抽样，避免只显示节点却没有连线；支持中英文标签三态切换（`runs_on(运行于)`）、全屏与聚焦邻居；
 - **🔌 Bearer Token REST API**：CI 分页/筛选/搜索、关系查询、规格确认与生成，开箱即用；
 - **📦 多格式导出**：JSON、CSV（ZIP）、XLSX；
 - **🩺 数据质量缺陷注入**：按规则注入缺字段、异常值等脏数据，用于验证 CMDB 采集/导入程序的容错；
@@ -74,7 +75,7 @@ cd web && npm install && npm run dev
 ### 测试
 
 ```bash
-cd backend && uv run pytest        # 103 个用例
+cd backend && uv run pytest        # 106 个用例
 cd web && npm test                 # Vitest 单测（24 个）
 cd web && npx playwright test      # 端到端（12 个，自动拉起生产形态服务）
 ```
@@ -110,7 +111,7 @@ cd web && npx playwright test      # 端到端（12 个，自动拉起生产形�
 ## 📁 项目结构
 
 ```text
-├── backend/            FastAPI + SQLAlchemy + SQLite 数据生成引擎（103 pytest）
+├── backend/            FastAPI + SQLAlchemy + SQLite 数据生成引擎（106 pytest）
 ├── web/                React 19 + Vite + Tailwind v4 + shadcn/ui 前端
 ├── docs/               产品、架构、前端与状态文档
 ├── Dockerfile          单镜像：后端 + 内置前端静态产物
