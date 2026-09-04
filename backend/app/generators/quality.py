@@ -82,7 +82,9 @@ def apply_quality_defects(
                     name=source.name,
                     attributes=copy.deepcopy(source.attributes),
                     tags=copy.deepcopy(source.tags),
-                    search_text=source.search_text,
+                )
+                duplicate.search_text = build_search_text(
+                    duplicate.id, duplicate.name, duplicate.attributes
                 )
                 result.append(duplicate)
             warnings.append(

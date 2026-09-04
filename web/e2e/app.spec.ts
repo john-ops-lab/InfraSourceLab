@@ -137,6 +137,9 @@ test("管理员可在设置页维护关系类型：改名、新增、删除", as
   await page.goto("/settings")
   await expandCard(page, "关系类型管理")
 
+  // 内置关系是内置模板的稳定依赖，只能修改，不能删除
+  await expect(page.getByRole("button", { name: "删除 contained_in" })).toBeDisabled()
+
   // 修改内置关系 runs_on 的中文名称
   await page.getByRole("button", { name: "编辑 runs_on" }).click()
   await page.getByLabel("runs_on 中文名称").fill("运行在")

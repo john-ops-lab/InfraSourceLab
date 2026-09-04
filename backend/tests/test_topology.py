@@ -53,6 +53,41 @@ def test_topology_limit_truncates_with_stable_order(client, auth):
     assert first["node_limit"] == 5
 
 
+def test_topology_limit_keeps_connected_relationships(client, auth):
+    spec = {
+        "name": "拓扑截断测试",
+        "seed": 12,
+        "ci_types": [
+            {"type": "application", "count": 250},
+            {"type": "virtual_machine", "count": 250},
+        ],
+        "relations": [
+            {
+                "type": "hosted_on",
+                "from_type": "application",
+                "to_type": "virtual_machine",
+                "strategy": "balanced",
+                "coverage": "from",
+            }
+        ],
+    }
+    response = client.post("/api/v1/datasets", json={"spec": spec}, headers=auth)
+    assert response.status_code == 201, response.text
+    dataset_id = response.json()["id"]
+
+    body = client.get(f"/api/v1/datasets/{dataset_id}/topology", headers=auth).json()
+    node_ids = {node["id"] for node in body["nodes"]}
+
+    assert body["truncated"] is True
+    assert len(body["nodes"]) == 200
+    assert {node["type"] for node in body["nodes"]} == {"application", "virtual_machine"}
+    assert body["edges"]
+    assert all(
+        edge["from_id"] in node_ids and edge["to_id"] in node_ids
+        for edge in body["edges"]
+    )
+
+
 def test_topology_ci_type_filter(client, auth):
     dataset_id = _create(client, auth)
     body = client.get(

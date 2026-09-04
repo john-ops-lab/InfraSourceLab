@@ -347,6 +347,8 @@ export function RelationTypesPanel() {
                               size="sm"
                               className="text-destructive hover:text-destructive"
                               onClick={() => setDeleteTarget(row)}
+                              disabled={row.is_builtin}
+                              title={row.is_builtin ? "内置关系类型不可删除" : undefined}
                               aria-label={`删除 ${row.type}`}
                             >
                               <Trash2 className="size-4" aria-hidden />

@@ -206,6 +206,16 @@ def test_search_text_only_whitelist_fields():
     assert ci.search_text == ci.search_text.lower()
 
 
+def test_ip_address_value_is_searchable():
+    raw = make_spec(
+        ci_types=[{"type": "ip_address", "count": 1}],
+        relations=[],
+    )
+    ci = generate_dataset(parse_and_validate(raw)).cis[0]
+
+    assert ci.attributes["address"] in ci.search_text
+
+
 def test_name_prefix_override():
     raw = make_spec(
         ci_types=[{"type": "application", "count": 2, "overrides": {"name_prefix": "team-a"}}],
